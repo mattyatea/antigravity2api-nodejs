@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@layer base {
+    :root {
+        --background: 255 255 255;
+        --foreground: 0 0 0;
+    }
+
+    .dark {
+        --background: 0 0 0;
+        --foreground: 255 255 255;
+    }
+
+    body {
+        @apply bg-white text-black antialiased dark:bg-black dark:text-white font-sans;
+        font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    }
+}
+
+@layer components {
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-gray-400 dark:bg-gray-600;
+    }
+
+    /* Tippy Theme */
+    .tippy-box[data-theme~='antigravity'] {
+        @apply bg-black text-white text-xs font-semibold rounded px-2 py-1 shadow-md dark:bg-white dark:text-black;
+    }
+
+    .tippy-box[data-theme~='antigravity'][data-placement^='top']>.tippy-arrow::before {
+        @apply border-t-black dark:border-t-white;
+    }
+
+    .tippy-box[data-theme~='antigravity'][data-placement^='bottom']>.tippy-arrow::before {
+        @apply border-b-black dark:border-b-white;
+    }
+
+    .tippy-box[data-theme~='antigravity'][data-placement^='left']>.tippy-arrow::before {
+        @apply border-l-black dark:border-l-white;
+    }
+
+    .tippy-box[data-theme~='antigravity'][data-placement^='right']>.tippy-arrow::before {
+        @apply border-r-black dark:border-r-white;
+    }
+}

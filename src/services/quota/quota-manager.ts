@@ -1,0 +1,157 @@
+import fs from 'fs';
+import path from 'path';
+import { log } from '../../utils/logger.js';
+import memoryManager, { MemoryPressure } from '../../utils/memory-manager.js';
+import { getDataDir } from '../../utils/paths.js';
+import { QUOTA_CACHE_TTL, QUOTA_CLEANUP_INTERVAL } from '../../config/constants.js';
+
+interface QuotaData {
+    lastUpdated: number;
+    models: Record<string, any>;
+}
+
+class QuotaManager {
+    filePath: string;
+    cache: Map<string, QuotaData>;
+    CACHE_TTL: number;
+    CLEANUP_INTERVAL: number;
+    cleanupTimer: NodeJS.Timeout | null;
+
+    constructor(filePath: string = path.join(getDataDir(), 'quotas.json')) {
+        this.filePath = filePath;
+        this.cache = new Map();
+        this.CACHE_TTL = QUOTA_CACHE_TTL;
+        this.CLEANUP_INTERVAL = QUOTA_CLEANUP_INTERVAL;
+        this.cleanupTimer = null;
+        this.ensureFileExists();
+        this.loadFromFile();
+        this.startCleanupTimer();
+        this.registerMemoryCleanup();
+    }
+
+    ensureFileExists() {
+        const dir = path.dirname(this.filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        if (!fs.existsSync(this.filePath)) {
+            fs.writeFileSync(this.filePath, JSON.stringify({ meta: { lastCleanup: Date.now(), ttl: this.CLEANUP_INTERVAL }, quotas: {} }, null, 2), 'utf8');
+        }
+    }
+
+    loadFromFile() {
+        try {
+            const data = fs.readFileSync(this.filePath, 'utf8');
+            const parsed = JSON.parse(data);
+            Object.entries(parsed.quotas || {}).forEach(([key, value]: [string, any]) => {
+                this.cache.set(key, value);
+            });
+        } catch (error: any) {
+            log.error('Failed to load quota file:', error.message);
+        }
+    }
+
+    saveToFile() {
+        try {
+            const quotas: Record<string, any> = {};
+            this.cache.forEach((value, key) => {
+                quotas[key] = value;
+            });
+            const data = {
+                meta: { lastCleanup: Date.now(), ttl: this.CLEANUP_INTERVAL },
+                quotas
+            };
+            fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf8');
+        } catch (error: any) {
+            log.error('Failed to save quota file:', error.message);
+        }
+    }
+
+    updateQuota(refreshToken: string, quotas: Record<string, any>) {
+        this.cache.set(refreshToken, {
+            lastUpdated: Date.now(),
+            models: quotas
+        });
+        this.saveToFile();
+    }
+
+    getQuota(refreshToken: string): QuotaData | null {
+        const data = this.cache.get(refreshToken);
+        if (!data) return null;
+
+        // Check if cache is expired
+        if (Date.now() - data.lastUpdated > this.CACHE_TTL) {
+            return null;
+        }
+
+        return data;
+    }
+
+    cleanup() {
+        const now = Date.now();
+        let cleaned = 0;
+
+        this.cache.forEach((value, key) => {
+            if (now - value.lastUpdated > this.CLEANUP_INTERVAL) {
+                this.cache.delete(key);
+                cleaned++;
+            }
+        });
+
+        if (cleaned > 0) {
+            log.info(`Cleaned up ${cleaned} expired quota records`);
+            this.saveToFile();
+        }
+    }
+
+    startCleanupTimer() {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+        }
+        this.cleanupTimer = setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
+    }
+
+    stopCleanupTimer() {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
+    }
+
+    // Register memory cleanup callback
+    registerMemoryCleanup() {
+        memoryManager.registerCleanup((pressure: MemoryPressure) => {
+            // Adjust cache TTL based on memory pressure
+            if (pressure === MemoryPressure.CRITICAL) {
+                // Clear all cache in emergency
+                const size = this.cache.size;
+                if (size > 0) {
+                    this.cache.clear();
+                    log.info(`Emergency clean up ${size} quota cache`);
+                }
+            } else if (pressure === MemoryPressure.HIGH) {
+                // Clear expired cache on high pressure
+                this.cleanup();
+            }
+        });
+    }
+
+    convertToBeijingTime(utcTimeStr: string | undefined): string {
+        if (!utcTimeStr) return 'N/A';
+        try {
+            const utcDate = new Date(utcTimeStr);
+            return utcDate.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Shanghai'
+            });
+        } catch (error) {
+            return 'N/A';
+        }
+    }
+}
+
+const quotaManager = new QuotaManager();
+export default quotaManager;

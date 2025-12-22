@@ -1,23 +1,19 @@
 {
   "name": "antigravity-to-openai",
   "version": "1.0.0",
-  "description": "Antigravity API 转 OpenAI 格式的代理服务",
+  "description": "Antigravity API Proxy Service (OpenAI Format)",
   "type": "module",
-  "main": "src/server/index.js",
-  "bin": "src/server/index.js",
+  "main": "src/index.js",
+  "bin": "src/index.js",
   "scripts": {
-    "start": "node --expose-gc src/server/index.js",
-    "start:no-gc": "node src/server/index.js",
+    "start": "tsx src/index.ts",
+    "start:no-gc": "tsx src/index.ts",
     "login": "node scripts/oauth-server.js",
     "refresh": "node scripts/refresh-tokens.js",
-    "dev": "node --expose-gc --watch src/server/index.js",
-    "build": "node scripts/build.js --target=win",
-    "build:win": "node scripts/build.js --target=win",
-    "build:linux": "node scripts/build.js --target=linux",
-    "build:linux-arm64": "node scripts/build.js --target=linux-arm64",
-    "build:macos": "node scripts/build.js --target=macos",
-    "build:macos-arm64": "node scripts/build.js --target=macos-arm64",
-    "build:all": "node scripts/build.js --target=all"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:frontend && npm run build"
   },
   "keywords": [
     "antigravity",
@@ -28,11 +24,14 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@hono/node-server": "^1.19.7",
+    "@types/node": "^25.0.3",
     "axios": "^1.13.2",
-    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3"
+    "hono": "^4.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "esbuild": "^0.27.2",
