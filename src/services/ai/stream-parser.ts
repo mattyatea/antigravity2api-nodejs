@@ -135,13 +135,18 @@ function parseAndEmitStreamChunk(line: string, state: any, callback: (data: any)
             }
             const usage = data.response?.usageMetadata;
             if (usage) {
+                const usageData: any = {
+                    prompt_tokens: usage.promptTokenCount || 0,
+                    completion_tokens: usage.candidatesTokenCount || 0,
+                    total_tokens: usage.totalTokenCount || 0
+                };
+                // Add thoughtsTokenCount for Gemini thinking models
+                if (usage.thoughtsTokenCount !== undefined) {
+                    usageData.thoughts_tokens = usage.thoughtsTokenCount;
+                }
                 callback({
                     type: 'usage',
-                    usage: {
-                        prompt_tokens: usage.promptTokenCount || 0,
-                        completion_tokens: usage.candidatesTokenCount || 0,
-                        total_tokens: usage.totalTokenCount || 0
-                    }
+                    usage: usageData
                 });
             }
         }

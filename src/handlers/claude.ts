@@ -98,6 +98,20 @@ export const createClaudeResponse = (
         }
     }
 
+    // Build usage object with cache token support
+    const usageObj: any = usage ? {
+        input_tokens: usage.prompt_tokens || 0,
+        output_tokens: usage.completion_tokens || 0
+    } : { input_tokens: 0, output_tokens: 0 };
+
+    // Add cache token fields if present (Claude API cache support)
+    if (usage?.cache_creation_input_tokens !== undefined) {
+        usageObj.cache_creation_input_tokens = usage.cache_creation_input_tokens;
+    }
+    if (usage?.cache_read_input_tokens !== undefined) {
+        usageObj.cache_read_input_tokens = usage.cache_read_input_tokens;
+    }
+
     return {
         id: id,
         type: "message",
@@ -106,10 +120,7 @@ export const createClaudeResponse = (
         model: model,
         stop_reason: stopReason,
         stop_sequence: null,
-        usage: usage ? {
-            input_tokens: usage.prompt_tokens || 0,
-            output_tokens: usage.completion_tokens || 0
-        } : { input_tokens: 0, output_tokens: 0 }
+        usage: usageObj
     };
 };
 

@@ -17,7 +17,8 @@ import {
     createResponseMeta,
     writeStreamData,
     with429Retry,
-    createStreamChunk
+    createStreamChunk,
+    createErrorStreamChunk
 } from '../utils/sse.js';
 import { DEFAULT_HEARTBEAT_INTERVAL } from '../config/constants.js';
 
@@ -112,9 +113,10 @@ export const handleOpenAIRequest = async (c: Context) => {
                     await writeStreamData(stream, { ...createStreamChunk(id, created, model, {}, hasToolCall ? 'tool_calls' : 'stop'), usage: usageData });
                 }
             } catch (error: any) {
-                // Log but maybe can't send error if headers already sent (which streamSSE does)
-                logger.error('Stream processing error:', error);
-                throw error;
+                logger.error('Stream processing error:', error.message);
+                const statusCode = error.statusCode || error.status || 500;
+                // Send error via SSE instead of throwing (consistent with Claude/Gemini handlers)
+                await writeStreamData(stream, createErrorStreamChunk(error, statusCode));
             } finally {
                 clearInterval(heartbeatTimer);
                 await stream.writeSSE({ data: '[DONE]' });
@@ -142,6 +144,23 @@ export const handleOpenAIRequest = async (c: Context) => {
                 }
             }
 
+            // Build extended usage object for OpenAI API compatibility
+            const extendedUsage: any = usage ? { ...usage } : {};
+
+            // Add completion_tokens_details for reasoning models (o3, etc.)
+            if (usage?.reasoning_tokens !== undefined) {
+                extendedUsage.completion_tokens_details = {
+                    reasoning_tokens: usage.reasoning_tokens
+                };
+            }
+
+            // Add prompt_tokens_details for cached tokens
+            if (usage?.cached_tokens !== undefined) {
+                extendedUsage.prompt_tokens_details = {
+                    cached_tokens: usage.cached_tokens
+                };
+            }
+
             const response = {
                 id,
                 object: 'chat.completion',
@@ -152,7 +171,7 @@ export const handleOpenAIRequest = async (c: Context) => {
                     message,
                     finish_reason: toolCalls.length > 0 ? 'tool_calls' : 'stop'
                 }],
-                usage
+                usage: extendedUsage
             };
 
             return c.json(response);

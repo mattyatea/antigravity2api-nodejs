@@ -38,12 +38,33 @@ function extractImagesFromContent(content: any): ExtractedContent {
                 result.text += item.text;
             } else if (item.type === 'image_url') {
                 const imageUrl = item.image_url?.url || '';
-                const match = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+                // Handle base64 data URL
+                const match = imageUrl.match(/^data:image\/([\w+]+);base64,(.+)$/);
                 if (match) {
                     result.images.push({
                         inlineData: {
                             mimeType: `image/${match[1]}`,
                             data: match[2]
+                        }
+                    });
+                } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+                    // Handle external URL (Gemini API supports fileData with fileUri)
+                    result.images.push({
+                        fileData: {
+                            fileUri: imageUrl,
+                            mimeType: item.image_url?.detail === 'high' ? 'image/png' : 'image/jpeg'
+                        }
+                    });
+                }
+            } else if (item.type === 'input_audio') {
+                // OpenAI audio input support (for realtime/audio models)
+                const audioData = item.input_audio?.data;
+                const audioFormat = item.input_audio?.format || 'wav';
+                if (audioData) {
+                    result.images.push({
+                        inlineData: {
+                            mimeType: `audio/${audioFormat}`,
+                            data: audioData
                         }
                     });
                 }
@@ -86,7 +107,11 @@ function handleToolCall(message: any, antigravityMessages: any[]) {
 function openaiMessageToAntigravity(openaiMessages: any[], enableThinking: boolean, actualModelName: string, sessionId: string): any[] {
     const antigravityMessages: any[] = [];
     for (const message of openaiMessages) {
-        if (message.role === 'user' || message.role === 'system') {
+        // Skip system messages - they are handled separately via extractSystemInstruction
+        if (message.role === 'system') {
+            continue;
+        }
+        if (message.role === 'user') {
             const extracted = extractImagesFromContent(message.content);
             pushUserMessage(extracted, antigravityMessages);
         } else if (message.role === 'assistant') {

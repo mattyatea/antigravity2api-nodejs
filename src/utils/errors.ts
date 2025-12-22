@@ -179,11 +179,25 @@ export function buildOpenAIErrorPayload(error: any, statusCode: number) {
  * Build Gemini compatible error payload
  */
 export function buildGeminiErrorPayload(error: any, statusCode: number) {
+    // Map HTTP status codes to Gemini status strings
+    const statusMap: Record<number, string> = {
+        400: "INVALID_ARGUMENT",
+        401: "UNAUTHENTICATED",
+        403: "PERMISSION_DENIED",
+        404: "NOT_FOUND",
+        429: "RESOURCE_EXHAUSTED",
+        499: "CANCELLED",
+        500: "INTERNAL",
+        501: "UNIMPLEMENTED",
+        503: "UNAVAILABLE",
+        504: "DEADLINE_EXCEEDED"
+    };
+
     return {
         error: {
             code: statusCode,
             message: extractErrorMessage(error),
-            status: "INTERNAL"
+            status: statusMap[statusCode] || "INTERNAL"
         }
     };
 }
@@ -193,9 +207,12 @@ export function buildGeminiErrorPayload(error: any, statusCode: number) {
  */
 export function buildClaudeErrorPayload(error: any, statusCode: number) {
     const errorType = statusCode === 401 ? "authentication_error" :
-        statusCode === 429 ? "rate_limit_error" :
-            statusCode === 400 ? "invalid_request_error" :
-                "api_error";
+        statusCode === 403 ? "permission_error" :
+            statusCode === 429 ? "rate_limit_error" :
+                statusCode === 529 ? "overloaded_error" :
+                    statusCode === 400 ? "invalid_request_error" :
+                        statusCode === 404 ? "not_found_error" :
+                            "api_error";
 
     return {
         type: "error",

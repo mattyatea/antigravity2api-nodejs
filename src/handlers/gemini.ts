@@ -40,6 +40,7 @@ interface GeminiResponse {
         promptTokenCount: number;
         candidatesTokenCount: number;
         totalTokenCount: number;
+        thoughtsTokenCount?: number;
     };
 }
 
@@ -106,6 +107,10 @@ export const createGeminiResponse = (
             candidatesTokenCount: usage.completion_tokens,
             totalTokenCount: usage.total_tokens
         };
+        // Add thoughtsTokenCount for Gemini thinking models
+        if (usage.thoughts_tokens !== undefined) {
+            response.usageMetadata.thoughtsTokenCount = usage.thoughts_tokens;
+        }
     }
 
     return response;
@@ -242,8 +247,9 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
                         );
 
                         // Send finish chunk and usage
-                        const finishReason = hasToolCall ? "STOP" : "STOP"; // Gemini tool call is also STOP
-                        const finalChunk = createGeminiResponse(null, null, null, null, finishReason, usageData);
+                        // Note: Gemini API uses "STOP" for both normal completion and tool calls
+                        // But we can distinguish by checking if tool_calls were sent earlier
+                        const finalChunk = createGeminiResponse(null, null, null, null, "STOP", usageData);
                         await stream.writeSSE({ data: JSON.stringify(finalChunk) });
                     }
                 } catch (error: any) {
@@ -262,8 +268,9 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
                 'gemini.no_stream '
             );
 
-            const finishReason = toolCalls.length > 0 ? "STOP" : "STOP";
-            const response = createGeminiResponse(content, reasoningContent, reasoningSignature, toolCalls, finishReason, usage);
+            // Gemini API returns "STOP" for both normal and tool call completions
+            // Clients should check for functionCall parts in the response to detect tool calls
+            const response = createGeminiResponse(content, reasoningContent, reasoningSignature, toolCalls, "STOP", usage);
             return c.json(response);
         }
     } catch (error: any) {

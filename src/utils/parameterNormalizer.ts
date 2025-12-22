@@ -35,7 +35,9 @@ export interface NormalizedParameters {
     top_p: number;
     top_k: number;
     thinking_budget?: number;
-    // added for compatibility
+    // Gemini 3 thinkingLevel: 'minimal' | 'low' | 'medium' | 'high'
+    thinking_level?: string;
+    // OpenAI max_completion_tokens compatibility
     max_completion_tokens?: number;
 }
 
@@ -43,12 +45,20 @@ export interface NormalizedParameters {
  * Extract parameters from OpenAI format
  */
 export function normalizeOpenAIParameters(params: any = {}): NormalizedParameters {
+    // OpenAI API: max_completion_tokens takes precedence over max_tokens
+    const maxTokens = params.max_completion_tokens ?? params.max_tokens ?? config.defaults.max_tokens;
+
     const normalized: NormalizedParameters = {
-        max_tokens: params.max_tokens ?? config.defaults.max_tokens,
+        max_tokens: maxTokens,
         temperature: params.temperature ?? config.defaults.temperature,
         top_p: params.top_p ?? config.defaults.top_p,
         top_k: params.top_k ?? config.defaults.top_k,
     };
+
+    // Preserve max_completion_tokens for compatibility
+    if (params.max_completion_tokens !== undefined) {
+        normalized.max_completion_tokens = params.max_completion_tokens;
+    }
 
     // Handle thinking budget
     if (params.thinking_budget !== undefined) {
@@ -104,11 +114,34 @@ export function normalizeGeminiParameters(generationConfig: any = {}): Normalize
 
     // Handle Gemini thinkingConfig parameter
     if (generationConfig.thinkingConfig && typeof generationConfig.thinkingConfig === 'object') {
+        // Gemini 3: thinkingLevel ('minimal' | 'low' | 'medium' | 'high')
+        if (generationConfig.thinkingConfig.thinkingLevel !== undefined) {
+            normalized.thinking_level = generationConfig.thinkingConfig.thinkingLevel;
+            // Map thinkingLevel to approximate budget for compatibility
+            const levelToBudget: Record<string, number> = {
+                'minimal': 0,
+                'low': 1024,
+                'medium': 8192,
+                'high': 24576
+            };
+            const level = generationConfig.thinkingConfig.thinkingLevel.toLowerCase();
+            if (level in levelToBudget) {
+                normalized.thinking_budget = levelToBudget[level];
+            }
+        }
+        // Gemini 2.5: thinkingBudget (number, -1 for dynamic, 0 to disable)
+        if (generationConfig.thinkingConfig.thinkingBudget !== undefined) {
+            const budget = generationConfig.thinkingConfig.thinkingBudget;
+            if (budget === -1) {
+                // Dynamic thinking - use default
+                normalized.thinking_budget = undefined;
+            } else {
+                normalized.thinking_budget = budget;
+            }
+        }
+        // Legacy: includeThoughts false to disable
         if (generationConfig.thinkingConfig.includeThoughts === false) {
-            // Explicitly disable thinking
             normalized.thinking_budget = 0;
-        } else if (generationConfig.thinkingConfig.thinkingBudget !== undefined) {
-            normalized.thinking_budget = generationConfig.thinkingConfig.thinkingBudget;
         }
     }
 
@@ -158,11 +191,23 @@ export function toGenerationConfig(normalized: NormalizedParameters, enableThink
         temperature: normalized.temperature,
         candidateCount: 1,
         maxOutputTokens: normalized.max_tokens || normalized.max_completion_tokens,
-        thinkingConfig: {
+    };
+
+    // Build thinkingConfig based on model type
+    const isGemini3 = actualModelName && actualModelName.includes('gemini-3');
+
+    if (isGemini3 && normalized.thinking_level) {
+        // Gemini 3: use thinkingLevel
+        generationConfig.thinkingConfig = {
+            thinkingLevel: normalized.thinking_level
+        };
+    } else {
+        // Gemini 2.5 and other models: use thinkingBudget
+        generationConfig.thinkingConfig = {
             includeThoughts: actualEnableThinking,
             thinkingBudget: thinkingBudget
-        }
-    };
+        };
+    }
 
     // Claude model does not support topP when thinking enabled
     if (actualEnableThinking && actualModelName && actualModelName.includes('claude')) {

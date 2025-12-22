@@ -37,10 +37,37 @@ function extractImagesFromClaudeContent(content: any): ExtractedContent {
             } else if (item.type === 'image') {
                 const source = item.source;
                 if (source && source.type === 'base64' && source.data) {
+                    // Base64 image
                     result.images.push({
                         inlineData: {
                             mimeType: source.media_type || 'image/png',
                             data: source.data
+                        }
+                    });
+                } else if (source && source.type === 'url' && source.url) {
+                    // URL image (Claude API also supports URL sources)
+                    result.images.push({
+                        fileData: {
+                            fileUri: source.url,
+                            mimeType: source.media_type || 'image/jpeg'
+                        }
+                    });
+                }
+            } else if (item.type === 'document') {
+                // Claude document support (PDF, etc.)
+                const source = item.source;
+                if (source && source.type === 'base64' && source.data) {
+                    result.images.push({
+                        inlineData: {
+                            mimeType: source.media_type || 'application/pdf',
+                            data: source.data
+                        }
+                    });
+                } else if (source && source.type === 'url' && source.url) {
+                    result.images.push({
+                        fileData: {
+                            fileUri: source.url,
+                            mimeType: source.media_type || 'application/pdf'
                         }
                     });
                 }
@@ -71,7 +98,7 @@ function handleClaudeAssistantMessage(message: any, antigravityMessages: any[], 
         }
     }
 
-    const hasContent = textContent && textContent.trim() !== '';
+    const hasContent = Boolean(textContent && textContent.trim() !== '');
     const parts: any[] = [];
 
     if (enableThinking) {

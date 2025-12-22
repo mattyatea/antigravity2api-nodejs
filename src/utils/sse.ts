@@ -39,7 +39,7 @@ export const clearChunkPool = () => {
     chunkPool.length = 0;
 };
 
-export const createStreamChunk = (id: string, created: number, model: string, delta: any, finish_reason: string | null = null) => {
+export const createStreamChunk = (id: string, created: number, model: string, delta: any, finish_reason: string | null = null, usage: any = null) => {
     const chunk = getChunkObject();
     chunk.id = id;
     chunk.object = 'chat.completion.chunk';
@@ -47,6 +47,28 @@ export const createStreamChunk = (id: string, created: number, model: string, de
     chunk.model = model;
     chunk.choices[0].delta = delta;
     chunk.choices[0].finish_reason = finish_reason;
+
+    // Add extended usage if provided (OpenAI API compatibility)
+    if (usage) {
+        chunk.usage = {
+            prompt_tokens: usage.prompt_tokens || 0,
+            completion_tokens: usage.completion_tokens || 0,
+            total_tokens: usage.total_tokens || 0
+        };
+        // Add reasoning_tokens if present (for o3/reasoning models)
+        if (usage.reasoning_tokens !== undefined) {
+            chunk.usage.completion_tokens_details = {
+                reasoning_tokens: usage.reasoning_tokens
+            };
+        }
+        // Add cached_tokens if present (for prompt caching)
+        if (usage.cached_tokens !== undefined) {
+            chunk.usage.prompt_tokens_details = {
+                cached_tokens: usage.cached_tokens
+            };
+        }
+    }
+
     return chunk;
 };
 
@@ -55,6 +77,19 @@ export const writeStreamData = async (stream: any, data: any) => {
     await stream.writeSSE({
         data: JSON.stringify(data)
     });
+};
+
+// Create error chunk for streaming responses (OpenAI compatible format)
+export const createErrorStreamChunk = (error: any, statusCode: number) => {
+    const message = error.message || 'Internal server error';
+    const type = error.type || 'server_error';
+    return {
+        error: {
+            message,
+            type,
+            code: statusCode
+        }
+    };
 };
 
 // Retry logic
