@@ -46,10 +46,18 @@ function buildProxyConfig(): { protocol: string; host: string; port: number } | 
     try {
         // @ts-ignore
         const proxyUrl = new URL(config.proxy);
+        const port = parseInt(proxyUrl.port, 10);
+        const host = proxyUrl.hostname;
+
+        // Validate that we have valid host and port
+        if (!host || !port || isNaN(port)) {
+            return false;
+        }
+
         return {
             protocol: proxyUrl.protocol.replace(':', ''),
-            host: proxyUrl.hostname,
-            port: parseInt(proxyUrl.port, 10)
+            host,
+            port
         };
     } catch {
         return false;
