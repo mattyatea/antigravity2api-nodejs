@@ -78,15 +78,21 @@ interface HttpRequestOptions {
 
 // Build unified request config for axios
 export function buildAxiosRequestConfig({ method = 'POST', url, headers, data = null, timeout = config.timeout }: HttpRequestOptions): AxiosRequestConfig {
+    const proxyConfig = buildProxyConfig();
+
     const axiosConfig: AxiosRequestConfig = {
         method: method as any,
         url,
         headers,
         timeout,
         httpAgent,
-        httpsAgent,
-        proxy: buildProxyConfig()
+        httpsAgent
     };
+
+    // Only include proxy if we have a valid configuration
+    if (proxyConfig !== false) {
+        axiosConfig.proxy = proxyConfig;
+    }
 
     if (data !== null) axiosConfig.data = data;
     return axiosConfig;
