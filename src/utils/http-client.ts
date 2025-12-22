@@ -17,14 +17,16 @@ function customLookup(
     const lookupOptions = { ...options, all: false };
 
     dns.lookup(hostname, { ...lookupOptions, family: 4 }, (err4, address4, family4) => {
-        if (!err4 && address4 && typeof address4 === 'string') {
+        if (!err4 && address4 && typeof address4 === 'string' && address4.trim() !== '') {
             return callback(null, address4, family4);
         }
         dns.lookup(hostname, { ...lookupOptions, family: 6 }, (err6, address6, family6) => {
-            if (!err6 && address6 && typeof address6 === 'string') {
+            if (!err6 && address6 && typeof address6 === 'string' && address6.trim() !== '') {
                 return callback(null, address6, family6);
             }
-            callback(err4 || err6 || new Error('DNS lookup failed'), '', 0);
+            // Return proper error, never return empty address
+            const error = err4 || err6 || new Error(`DNS lookup failed for ${hostname}`);
+            callback(error, hostname, 0);
         });
     });
 }
@@ -51,13 +53,13 @@ function buildProxyConfig(): { protocol: string; host: string; port: number } | 
     }
 
     // Check if proxy is properly configured (not null, undefined, or empty string)
-    if (!proxyValue || typeof proxyValue !== 'string' || proxyValue.trim() === '') {
+    // Explicitly check for null to handle config.proxy returning null
+    if (proxyValue === null || proxyValue === undefined || typeof proxyValue !== 'string' || proxyValue.trim() === '') {
         logger.debug('[Proxy] No valid proxy configured, skipping proxy');
         return false;
     }
 
     try {
-        // @ts-ignore
         const proxyUrl = new URL(proxyValue);
         const port = parseInt(proxyUrl.port, 10);
         const host = proxyUrl.hostname;
@@ -100,14 +102,12 @@ export function buildAxiosRequestConfig({ method = 'POST', url, headers, data = 
         url,
         headers,
         timeout,
-        httpAgent,
-        httpsAgent
+        // Don't use custom agents - they can interfere with proxy settings
+        // httpAgent,
+        // httpsAgent,
+        // Only set proxy if we have a valid configuration
+        ...(proxyConfig !== false && { proxy: proxyConfig })
     };
-
-    // Only include proxy if we have a valid configuration
-    if (proxyConfig !== false) {
-        axiosConfig.proxy = proxyConfig;
-    }
 
     if (data !== null) axiosConfig.data = data;
     return axiosConfig;
