@@ -98,8 +98,8 @@ dotenv.config({ path: envPath });
 // Get proxy config: prioritize PROXY, then system proxy env vars
 export function getProxyConfig() {
   // Prioritize explicitly configured PROXY
-  if (process.env.PROXY) {
-    return process.env.PROXY;
+  if (process.env.PROXY && process.env.PROXY.trim() !== '') {
+    return process.env.PROXY.trim();
   }
 
   // Check system proxy env vars (by priority)
@@ -110,11 +110,13 @@ export function getProxyConfig() {
     process.env.ALL_PROXY ||
     process.env.all_proxy;
 
-  if (systemProxy) {
+  // Filter out empty strings
+  if (systemProxy && systemProxy.trim() !== '') {
     log.info(`Using system proxy: ${systemProxy}`);
+    return systemProxy.trim();
   }
 
-  return systemProxy || null;
+  return null;
 }
 
 /**

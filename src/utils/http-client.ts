@@ -42,7 +42,11 @@ const httpsAgent = new https.Agent({
 // Build unified proxy configuration
 function buildProxyConfig(): { protocol: string; host: string; port: number } | false {
     // @ts-ignore
-    if (!config.proxy) return false;
+    // Check if proxy is properly configured (not null, undefined, or empty string)
+    if (!config.proxy || typeof config.proxy !== 'string' || config.proxy.trim() === '') {
+        return false;
+    }
+
     try {
         // @ts-ignore
         const proxyUrl = new URL(config.proxy);
