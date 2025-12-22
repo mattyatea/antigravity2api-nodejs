@@ -3,6 +3,7 @@ import dns from 'dns';
 import http from 'http';
 import https from 'https';
 import config from '../config/index.js';
+import logger from './logger.js';
 
 // ==================== Unified DNS & Proxy Configuration ====================
 
@@ -42,28 +43,42 @@ const httpsAgent = new https.Agent({
 // Build unified proxy configuration
 function buildProxyConfig(): { protocol: string; host: string; port: number } | false {
     // @ts-ignore
+    const proxyValue = config.proxy;
+
+    // Debug logging to trace the issue
+    if (proxyValue !== undefined && proxyValue !== null) {
+        logger.debug(`[Proxy] config.proxy = "${proxyValue}" (type: ${typeof proxyValue})`);
+    }
+
     // Check if proxy is properly configured (not null, undefined, or empty string)
-    if (!config.proxy || typeof config.proxy !== 'string' || config.proxy.trim() === '') {
+    if (!proxyValue || typeof proxyValue !== 'string' || proxyValue.trim() === '') {
+        logger.debug('[Proxy] No valid proxy configured, skipping proxy');
         return false;
     }
 
     try {
         // @ts-ignore
-        const proxyUrl = new URL(config.proxy);
+        const proxyUrl = new URL(proxyValue);
         const port = parseInt(proxyUrl.port, 10);
         const host = proxyUrl.hostname;
 
+        logger.debug(`[Proxy] Parsed URL - host: "${host}", port: ${port}`);
+
         // Validate that we have valid host and port
         if (!host || !port || isNaN(port)) {
+            logger.warn(`[Proxy] Invalid proxy configuration - host: ${host}, port: ${port}`);
             return false;
         }
 
-        return {
+        const result = {
             protocol: proxyUrl.protocol.replace(':', ''),
             host,
             port
         };
-    } catch {
+        logger.info(`[Proxy] Using proxy: ${result.protocol}://${result.host}:${result.port}`);
+        return result;
+    } catch (error: any) {
+        logger.warn(`[Proxy] Failed to parse proxy URL "${proxyValue}": ${error.message}`);
         return false;
     }
 }

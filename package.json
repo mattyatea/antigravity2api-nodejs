@@ -8,8 +8,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "start:no-gc": "tsx src/index.ts",
-    "login": "node scripts/oauth-server.js",
-    "refresh": "node scripts/refresh-tokens.js",
+    "login": "tsx scripts/oauth-server.ts",
+    "refresh": "tsx scripts/refresh-tokens.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "build:frontend": "cd frontend && npm run build",
