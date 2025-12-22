@@ -20,8 +20,8 @@ const server = http.createServer((req, res) => {
 
         if (code) {
             log.info('收到授权码，正在交换 Token...');
-            oauthManager.authenticate(code, port.port).then(account => {
-                const result = tokenManager.addToken(account);
+            oauthManager.authenticate(code, port.port).then(async account => {
+                const result = await tokenManager.addToken(account);
                 if (result.success) {
                     log.info(`Token 已保存到 ${ACCOUNTS_FILE}`);
                     if (!account.hasQuota) {

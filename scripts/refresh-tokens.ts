@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const ACCOUNTS_FILE = path.join(__dirname, '..', 'data', 'accounts.json');
 
 async function refreshAllTokens() {
-    const tokens = tokenManager.getTokenList();
+    const tokens = await tokenManager.getTokenList();
     if (!tokens || tokens.length === 0) {
         log.warn('未找到可刷新账号');
         return;
@@ -29,7 +29,7 @@ async function refreshAllTokens() {
 
         try {
             log.info(`刷新账号 ${i + 1}...`);
-            await tokenManager.refreshToken(token);
+            await tokenManager.refreshToken(token as any);
             successCount++;
             log.info(`账号 ${i + 1}: 刷新成功`);
         } catch (error: any) {
@@ -39,7 +39,7 @@ async function refreshAllTokens() {
 
             // 对于 400/403 之类错误，统一禁用该账号，行为与运行时一致
             if (statusCode === 400 || statusCode === 403) {
-                tokenManager.disableToken(token);
+                tokenManager.disableToken(token as any);
                 log.warn(`账号 ${i + 1}: Token 已失效或错误，已自动禁用该账号`);
             }
         }
