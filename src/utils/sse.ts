@@ -80,7 +80,11 @@ export const writeStreamData = async (stream: any, data: any) => {
 };
 
 export const writeHeartbeat = async (stream: any) => {
-    await stream.writeSSE({ comment: 'heartbeat' });
+    try {
+        await stream.writeSSE({ comment: 'heartbeat' });
+    } catch {
+        // Stream may be closed, ignore the error
+    }
 };
 
 // Create error chunk for streaming responses (OpenAI compatible format)
