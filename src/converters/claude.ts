@@ -102,7 +102,7 @@ function handleClaudeAssistantMessage(message: any, antigravityMessages: any[], 
     const parts: any[] = [];
 
     if (enableThinking) {
-        parts.push(createThoughtPart(' '));
+        parts.push(createThoughtPart(' ', reasoningSignature));
     }
     if (hasContent) parts.push({ text: textContent.trimEnd(), thoughtSignature: reasoningSignature });
     if (!enableThinking && parts[0]) delete parts[0].thoughtSignature;

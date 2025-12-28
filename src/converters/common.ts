@@ -112,8 +112,12 @@ export function pushFunctionResponse(toolCallId: string, functionName: string, r
 /**
  * Create signed thought part
  */
-export function createThoughtPart(text: string): MessagePart {
-    return { text: text || ' ', thought: true };
+export function createThoughtPart(text: string, signature?: string): MessagePart {
+    const part: MessagePart = { text: text || ' ', thought: true };
+    if (signature) {
+        part.thoughtSignature = signature;
+    }
+    return part;
 }
 
 /**

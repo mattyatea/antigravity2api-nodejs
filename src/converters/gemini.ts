@@ -77,7 +77,7 @@ function processModelThoughts(content: any, reasoningSignature: string, toolSign
     } else if (thoughtIndex !== -1 && signatureIndex === -1) {
         parts[thoughtIndex].thoughtSignature = reasoningSignature;
     } else if (thoughtIndex === -1) {
-        parts.unshift(createThoughtPart(' '));
+        parts.unshift(createThoughtPart(' ', reasoningSignature));
     }
 
     // Collect independent signature parts (for functionCall)

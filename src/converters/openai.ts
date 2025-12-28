@@ -91,7 +91,7 @@ function handleAssistantMessage(message: any, antigravityMessages: any[], enable
     if (enableThinking) {
         const reasoningText = (typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0)
             ? message.reasoning_content : ' ';
-        parts.push(createThoughtPart(reasoningText));
+        parts.push(createThoughtPart(reasoningText, reasoningSignature));
     }
     if (hasContent) parts.push({ text: message.content.trimEnd(), thoughtSignature: message.thoughtSignature || reasoningSignature });
     if (!enableThinking && parts[0]) delete parts[0].thoughtSignature;
