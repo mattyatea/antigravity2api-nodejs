@@ -206,7 +206,7 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
         if (isStream) {
             return streamSSE(c, async (stream) => {
                 const heartbeatTimer = setInterval(async () => {
-                    await stream.writeSSE({ event: 'ping', data: '' });
+                    await stream.writeSSE({ event: 'ping', data: '{}' });
                 }, DEFAULT_HEARTBEAT_INTERVAL);
 
                 try {

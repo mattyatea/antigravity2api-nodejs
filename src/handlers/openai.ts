@@ -63,7 +63,7 @@ export const handleOpenAIRequest = async (c: Context) => {
                 // streamSSE helper doesn't expose strict comment api easily, but writeSSE can take a string
                 // But stream.writeSSE({ comment: 'heartbeat' }) depends on implementation.
                 // Hono streamSSE writes `:${options.comment}\n` if comment is present.
-                await stream.writeSSE({ event: 'ping', data: '' });
+                await stream.writeSSE({ event: 'ping', data: '{}' });
             }, DEFAULT_HEARTBEAT_INTERVAL);
 
             try {
