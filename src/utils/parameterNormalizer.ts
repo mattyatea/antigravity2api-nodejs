@@ -196,11 +196,26 @@ export function toGenerationConfig(normalized: NormalizedParameters, enableThink
     // Build thinkingConfig based on model type
     const isGemini3 = actualModelName && actualModelName.includes('gemini-3');
 
-    if (isGemini3 && normalized.thinking_level) {
-        // Gemini 3: use thinkingLevel
-        generationConfig.thinkingConfig = {
-            thinkingLevel: normalized.thinking_level
-        };
+    if (isGemini3) {
+        let thinkingLevel = normalized.thinking_level;
+        if (!thinkingLevel && actualEnableThinking) {
+            const effectiveBudget = normalized.thinking_budget ?? thinkingBudget ?? defaultThinkingBudget;
+            if (effectiveBudget <= 0) thinkingLevel = 'minimal';
+            else if (effectiveBudget <= 2048) thinkingLevel = 'low';
+            else if (effectiveBudget <= 8192) thinkingLevel = 'medium';
+            else thinkingLevel = 'high';
+        }
+        if (thinkingLevel) {
+            // Gemini 3: use thinkingLevel
+            generationConfig.thinkingConfig = {
+                thinkingLevel
+            };
+        } else {
+            generationConfig.thinkingConfig = {
+                includeThoughts: actualEnableThinking,
+                thinkingBudget: thinkingBudget
+            };
+        }
     } else {
         // Gemini 2.5 and other models: use thinkingBudget
         generationConfig.thinkingConfig = {

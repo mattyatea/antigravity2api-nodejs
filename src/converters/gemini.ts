@@ -130,11 +130,15 @@ export function generateGeminiRequestBody(geminiBody: any, modelName: string, to
         }
     }
 
+    const hadThinkingConfig = Boolean(request.generationConfig?.thinkingConfig);
     // Process Gemini format parameters using unified parameter normalizer module
     const normalizedParams = normalizeGeminiParameters(request.generationConfig || {});
 
     // Convert to generationConfig format
     request.generationConfig = toGenerationConfig(normalizedParams, enableThinking, actualModelName);
+    if (!enableThinking && !hadThinkingConfig && normalizedParams.thinking_level === undefined && normalizedParams.thinking_budget === undefined) {
+        delete request.generationConfig.thinkingConfig;
+    }
     request.sessionId = token.sessionId;
     delete request.safetySettings;
 
@@ -151,10 +155,15 @@ export function generateGeminiRequestBody(geminiBody: any, modelName: string, to
     const existingText = request.systemInstruction?.parts?.[0]?.text || '';
     // @ts-ignore
     const mergedText = existingText ? `${config.systemInstruction}\n\n${existingText}` : config.systemInstruction ?? "";
-    request.systemInstruction = {
-        role: 'user',
-        parts: [{ text: mergedText }]
-    };
+    const trimmedText = mergedText.trim();
+    if (trimmedText) {
+        request.systemInstruction = {
+            role: 'user',
+            parts: [{ text: trimmedText }]
+        };
+    } else {
+        delete request.systemInstruction;
+    }
 
     const requestBody = {
         project: token.projectId,
