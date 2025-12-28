@@ -126,6 +126,37 @@ function buildRequesterConfig(headers: any, body: any = null) {
     return reqConfig;
 }
 
+function redactRequestBody(requestBody: any) {
+    if (!requestBody || typeof requestBody !== 'object') return requestBody;
+    const cloned = JSON.parse(JSON.stringify(requestBody));
+    const contents = cloned.request?.contents;
+    if (Array.isArray(contents)) {
+        for (const content of contents) {
+            if (!content?.parts || !Array.isArray(content.parts)) continue;
+            for (const part of content.parts) {
+                if (part?.inlineData?.data) {
+                    part.inlineData.data = '[base64 omitted]';
+                }
+            }
+        }
+    }
+    return cloned;
+}
+
+function logUpstreamRequest(url: string, requestBody: any) {
+    const safeBody = redactRequestBody(requestBody);
+    let payload = '';
+    try {
+        payload = JSON.stringify(safeBody);
+    } catch {
+        payload = '[unserializable request body]';
+    }
+    const maxLen = 4000;
+    if (payload.length > maxLen) {
+        payload = `${payload.slice(0, maxLen)}... [truncated]`;
+    }
+    logger.info('[Upstream Request]', url, payload);
+}
 
 // Unified error handling
 async function handleApiError(error: any, token: any): Promise<never> {
@@ -180,6 +211,7 @@ export async function generateAssistantResponse(requestBody: any, token: any, ca
 
     try {
         // useAxios check removed, assuming true
+        logUpstreamRequest(config.api.url, requestBody);
         const response = await httpStreamRequest({
             method: 'POST',
             url: config.api.url,
@@ -310,6 +342,7 @@ export async function generateAssistantResponseNoStream(requestBody: any, token:
 
     try {
         // useAxios check removed, assuming true
+        logUpstreamRequest(config.api.noStreamUrl, requestBody);
         data = (await httpRequest({
             method: 'POST',
             url: config.api.noStreamUrl,
