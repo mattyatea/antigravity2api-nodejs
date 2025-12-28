@@ -44,6 +44,38 @@ interface GeminiResponse {
     };
 }
 
+function redactGeminiPayload(payload: any) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const cloned = JSON.parse(JSON.stringify(payload));
+    const contents = cloned.request?.contents;
+    if (Array.isArray(contents)) {
+        for (const content of contents) {
+            if (!content?.parts || !Array.isArray(content.parts)) continue;
+            for (const part of content.parts) {
+                if (part?.inlineData?.data) {
+                    part.inlineData.data = '[base64 omitted]';
+                }
+            }
+        }
+    }
+    return cloned;
+}
+
+function logGeminiPayload(label: string, url: string, payload: any) {
+    const safePayload = redactGeminiPayload(payload);
+    let serialized = '';
+    try {
+        serialized = JSON.stringify(safePayload);
+    } catch {
+        serialized = '[unserializable payload]';
+    }
+    const maxLen = 4000;
+    if (serialized.length > maxLen) {
+        serialized = `${serialized.slice(0, maxLen)}... [truncated]`;
+    }
+    logger.info(label, url, serialized);
+}
+
 const normalizeGeminiModelName = (modelName: string): string => {
     const trimmed = modelName.trim();
     const withoutPrefix = trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
@@ -214,6 +246,9 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
         if (isImageModel) {
             prepareImageRequest(requestBody);
         }
+
+        const upstreamUrl = isStream ? config.api.url : config.api.noStreamUrl;
+        logGeminiPayload('[Upstream Request]', upstreamUrl, requestBody);
 
         if (isStream) {
             return streamSSE(c, async (stream) => {
