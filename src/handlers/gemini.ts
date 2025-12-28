@@ -233,6 +233,7 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
         if (!normalizedModelName) {
             return c.json({ error: { code: 400, message: 'Model name is required', status: "INVALID_ARGUMENT" } }, 400);
         }
+        logger.info('[Gemini] request received', normalizedModelName, isStream ? 'stream' : 'no_stream');
 
         const token = await tokenManager.getToken();
         if (!token) {
