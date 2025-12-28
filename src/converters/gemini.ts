@@ -14,33 +14,73 @@ function generateFunctionCallId(): string {
 
 /**
  * Handle ID matching between functionCall and functionResponse
+ * Ensures every functionResponse has a matching functionCall with the same ID
  */
 function processFunctionCallIds(contents: any[]) {
-    const functionCallIds: string[] = [];
+    // Build a map of functionCall IDs and names, indexed by message position
+    // Structure: Map<messageIndex, Array<{id, name, part}>>
+    const functionCallsByMessage: Map<number, Array<{ id: string; name: string; part: any }>> = new Map();
 
-    // Collect IDs of all functionCall
-    contents.forEach(content => {
+    contents.forEach((content, msgIndex) => {
         if (content.role === 'model' && content.parts && Array.isArray(content.parts)) {
+            const calls: Array<{ id: string; name: string; part: any }> = [];
             content.parts.forEach((part: any) => {
                 if (part.functionCall) {
+                    // Ensure functionCall has an ID
                     if (!part.functionCall.id) {
                         part.functionCall.id = generateFunctionCallId();
                     }
-                    functionCallIds.push(part.functionCall.id);
+                    calls.push({
+                        id: part.functionCall.id,
+                        name: part.functionCall.name,
+                        part
+                    });
                 }
             });
+            if (calls.length > 0) {
+                functionCallsByMessage.set(msgIndex, calls);
+            }
         }
     });
 
-    // Assign corresponding IDs to functionResponse
-    let responseIndex = 0;
-    contents.forEach(content => {
+    // Process functionResponses and match with preceding functionCalls
+    contents.forEach((content, msgIndex) => {
         if (content.role === 'user' && content.parts && Array.isArray(content.parts)) {
+            // Find the most recent model message with function calls (should be msgIndex - 1)
+            let prevModelCalls: Array<{ id: string; name: string; part: any }> | undefined;
+            for (let i = msgIndex - 1; i >= 0; i--) {
+                if (functionCallsByMessage.has(i)) {
+                    prevModelCalls = functionCallsByMessage.get(i);
+                    break;
+                }
+            }
+
             content.parts.forEach((part: any) => {
                 if (part.functionResponse) {
-                    if (!part.functionResponse.id && responseIndex < functionCallIds.length) {
-                        part.functionResponse.id = functionCallIds[responseIndex];
-                        responseIndex++;
+                    const responseName = part.functionResponse.name;
+                    const existingId = part.functionResponse.id;
+
+                    if (existingId && prevModelCalls) {
+                        // If response has an ID, ensure the matching functionCall has the same ID
+                        const matchingCall = prevModelCalls.find(c => c.name === responseName);
+                        if (matchingCall && matchingCall.id !== existingId) {
+                            // Update functionCall ID to match response ID
+                            matchingCall.part.functionCall.id = existingId;
+                            matchingCall.id = existingId;
+                        }
+                    } else if (!existingId && prevModelCalls) {
+                        // If response has no ID, find matching call by name and use its ID
+                        const matchingCall = prevModelCalls.find(c => c.name === responseName);
+                        if (matchingCall) {
+                            part.functionResponse.id = matchingCall.id;
+                        } else if (prevModelCalls.length > 0) {
+                            // Fallback: use first unmatched call's ID
+                            part.functionResponse.id = prevModelCalls[0].id;
+                        } else {
+                            // No matching call found, generate new ID for both
+                            const newId = generateFunctionCallId();
+                            part.functionResponse.id = newId;
+                        }
                     }
                 }
             });
