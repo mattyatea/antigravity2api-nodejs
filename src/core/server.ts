@@ -57,8 +57,10 @@ app.post('/v1/messages', async (c) => {
 // Gemini
 app.get('/v1beta/models', handleGeminiModelsList);
 app.get('/v1beta/models/:model', handleGeminiModelDetail);
-app.post('/v1beta/models/:model:*', async (c) => {
-    const model = c.req.param('model') || '';
+app.post('/v1beta/models/*', async (c) => {
+    // Extract model name from path: /v1beta/models/{model}:{action}
+    const pathMatch = c.req.path.match(/^\/v1beta\/models\/([^:]+):/);
+    const model = pathMatch?.[1] ?? '';
     const isStream = c.req.path.includes('streamGenerateContent'); // Basic stream detection
     return handleGeminiRequest(c, model, isStream);
 });
