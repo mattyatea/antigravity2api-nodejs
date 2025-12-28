@@ -79,6 +79,10 @@ export const writeStreamData = async (stream: any, data: any) => {
     });
 };
 
+export const writeHeartbeat = async (stream: any) => {
+    await stream.writeSSE({ comment: 'heartbeat' });
+};
+
 // Create error chunk for streaming responses (OpenAI compatible format)
 export const createErrorStreamChunk = (error: any, statusCode: number) => {
     const message = error.message || 'Internal server error';

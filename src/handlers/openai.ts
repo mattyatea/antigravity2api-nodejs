@@ -18,7 +18,8 @@ import {
     writeStreamData,
     with429Retry,
     createStreamChunk,
-    createErrorStreamChunk
+    createErrorStreamChunk,
+    writeHeartbeat
 } from '../utils/sse.js';
 import { DEFAULT_HEARTBEAT_INTERVAL } from '../config/constants.js';
 
@@ -59,11 +60,7 @@ export const handleOpenAIRequest = async (c: Context) => {
         return streamSSE(c, async (stream) => {
             // Start heartbeat
             const heartbeatTimer = setInterval(async () => {
-                // SSE comment for heartbeat
-                // streamSSE helper doesn't expose strict comment api easily, but writeSSE can take a string
-                // But stream.writeSSE({ comment: 'heartbeat' }) depends on implementation.
-                // Hono streamSSE writes `:${options.comment}\n` if comment is present.
-                await stream.writeSSE({ event: 'ping', data: '{}' });
+                await writeHeartbeat(stream);
             }, DEFAULT_HEARTBEAT_INTERVAL);
 
             try {
@@ -182,4 +179,3 @@ export const handleOpenAIRequest = async (c: Context) => {
         }
     }
 };
-

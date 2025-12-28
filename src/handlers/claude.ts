@@ -25,7 +25,7 @@ import logger from '../utils/logger.js';
 import config from '../config/index.js';
 // @ts-ignore
 import tokenManager from '../services/auth/token-manager.js';
-import { with429Retry } from '../utils/sse.js';
+import { with429Retry, writeHeartbeat } from '../utils/sse.js';
 import { DEFAULT_HEARTBEAT_INTERVAL } from '../config/constants.js';
 
 /**
@@ -158,7 +158,7 @@ export const handleClaudeRequest = async (c: Context, body: any, isStream: boole
         if (isStream) {
             return streamSSE(c, async (stream) => {
                 const heartbeatTimer = setInterval(async () => {
-                    await stream.writeSSE({ event: 'ping', data: '{}' });
+                    await writeHeartbeat(stream);
                 }, DEFAULT_HEARTBEAT_INTERVAL);
 
                 try {
@@ -435,4 +435,3 @@ export const handleClaudeRequest = async (c: Context, body: any, isStream: boole
         return c.json(buildClaudeErrorPayload(error, statusCode), statusCode);
     }
 };
-

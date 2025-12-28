@@ -24,7 +24,7 @@ import logger from '../utils/logger.js';
 import config from '../config/index.js';
 // @ts-ignore
 import tokenManager from '../services/auth/token-manager.js';
-import { with429Retry } from '../utils/sse.js';
+import { with429Retry, writeHeartbeat } from '../utils/sse.js';
 import { DEFAULT_HEARTBEAT_INTERVAL } from '../config/constants.js';
 
 interface GeminiResponse {
@@ -43,6 +43,13 @@ interface GeminiResponse {
         thoughtsTokenCount?: number;
     };
 }
+
+const normalizeGeminiModelName = (modelName: string): string => {
+    const trimmed = modelName.trim();
+    const withoutPrefix = trimmed.startsWith('models/') ? trimmed.slice('models/'.length) : trimmed;
+    const suffixIndex = withoutPrefix.indexOf(':');
+    return suffixIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, suffixIndex);
+};
 
 /**
  * Create Gemini format response
@@ -190,14 +197,19 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
     const safeRetries = maxRetries > 0 ? Math.floor(maxRetries) : 0;
 
     try {
+        const normalizedModelName = normalizeGeminiModelName(modelName);
+        if (!normalizedModelName) {
+            return c.json({ error: { code: 400, message: 'Model name is required', status: "INVALID_ARGUMENT" } }, 400);
+        }
+
         const token = await tokenManager.getToken();
         if (!token) {
             return c.json({ error: { code: 500, message: 'No token available, please run npm run login to get a token', status: "INTERNAL" } }, 500);
         }
 
         const body = await c.req.json();
-        const isImageModel = modelName.includes('-image');
-        const requestBody = generateGeminiRequestBody(body, modelName, token);
+        const isImageModel = normalizedModelName.includes('-image');
+        const requestBody = generateGeminiRequestBody(body, normalizedModelName, token);
 
         if (isImageModel) {
             prepareImageRequest(requestBody);
@@ -206,7 +218,7 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
         if (isStream) {
             return streamSSE(c, async (stream) => {
                 const heartbeatTimer = setInterval(async () => {
-                    await stream.writeSSE({ event: 'ping', data: '{}' });
+                    await writeHeartbeat(stream);
                 }, DEFAULT_HEARTBEAT_INTERVAL);
 
                 try {
@@ -279,4 +291,3 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
         return c.json(buildGeminiErrorPayload(error, statusCode), statusCode);
     }
 };
-
