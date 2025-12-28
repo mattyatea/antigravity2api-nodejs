@@ -18,13 +18,13 @@ function generateFunctionCallId(): string {
  */
 function processFunctionCallIds(contents: any[]) {
     // Build a map of functionCall IDs and names, indexed by message position
-    // Structure: Map<messageIndex, Array<{id, name, part}>>
-    const functionCallsByMessage: Map<number, Array<{ id: string; name: string; part: any }>> = new Map();
+    // Structure: Map<messageIndex, Array<{id, name, part, index}>>
+    const functionCallsByMessage: Map<number, Array<{ id: string; name: string; part: any; index: number }>> = new Map();
 
     contents.forEach((content, msgIndex) => {
         if (content.role === 'model' && content.parts && Array.isArray(content.parts)) {
-            const calls: Array<{ id: string; name: string; part: any }> = [];
-            content.parts.forEach((part: any) => {
+            const calls: Array<{ id: string; name: string; part: any; index: number }> = [];
+            content.parts.forEach((part: any, partIndex: number) => {
                 if (part.functionCall) {
                     // Ensure functionCall has an ID
                     if (!part.functionCall.id) {
@@ -33,7 +33,8 @@ function processFunctionCallIds(contents: any[]) {
                     calls.push({
                         id: part.functionCall.id,
                         name: part.functionCall.name,
-                        part
+                        part,
+                        index: partIndex
                     });
                 }
             });
@@ -47,7 +48,7 @@ function processFunctionCallIds(contents: any[]) {
     contents.forEach((content, msgIndex) => {
         if (content.role === 'user' && content.parts && Array.isArray(content.parts)) {
             // Find the most recent model message with function calls (should be msgIndex - 1)
-            let prevModelCalls: Array<{ id: string; name: string; part: any }> | undefined;
+            let prevModelCalls: Array<{ id: string; name: string; part: any; index: number }> | undefined;
             for (let i = msgIndex - 1; i >= 0; i--) {
                 if (functionCallsByMessage.has(i)) {
                     prevModelCalls = functionCallsByMessage.get(i);
@@ -55,31 +56,42 @@ function processFunctionCallIds(contents: any[]) {
                 }
             }
 
+            // Track which call indices have been matched to avoid duplicates
+            const matchedCallIndices = new Set<number>();
+
             content.parts.forEach((part: any) => {
                 if (part.functionResponse) {
                     const responseName = part.functionResponse.name;
                     const existingId = part.functionResponse.id;
 
                     if (existingId && prevModelCalls) {
-                        // If response has an ID, ensure the matching functionCall has the same ID
-                        const matchingCall = prevModelCalls.find(c => c.name === responseName);
-                        if (matchingCall && matchingCall.id !== existingId) {
-                            // Update functionCall ID to match response ID
+                        // If response has an ID, find unmatched call by name and update its ID
+                        const matchingCall = prevModelCalls.find(c =>
+                            c.name === responseName && !matchedCallIndices.has(c.index)
+                        );
+                        if (matchingCall) {
                             matchingCall.part.functionCall.id = existingId;
                             matchingCall.id = existingId;
+                            matchedCallIndices.add(matchingCall.index);
                         }
                     } else if (!existingId && prevModelCalls) {
-                        // If response has no ID, find matching call by name and use its ID
-                        const matchingCall = prevModelCalls.find(c => c.name === responseName);
+                        // If response has no ID, find unmatched call by name and use its ID
+                        const matchingCall = prevModelCalls.find(c =>
+                            c.name === responseName && !matchedCallIndices.has(c.index)
+                        );
                         if (matchingCall) {
                             part.functionResponse.id = matchingCall.id;
-                        } else if (prevModelCalls.length > 0) {
-                            // Fallback: use first unmatched call's ID
-                            part.functionResponse.id = prevModelCalls[0].id;
+                            matchedCallIndices.add(matchingCall.index);
                         } else {
-                            // No matching call found, generate new ID for both
-                            const newId = generateFunctionCallId();
-                            part.functionResponse.id = newId;
+                            // Fallback: find any unmatched call
+                            const unmatchedCall = prevModelCalls.find(c => !matchedCallIndices.has(c.index));
+                            if (unmatchedCall) {
+                                part.functionResponse.id = unmatchedCall.id;
+                                matchedCallIndices.add(unmatchedCall.index);
+                            } else {
+                                // No matching call found, generate new ID
+                                part.functionResponse.id = generateFunctionCallId();
+                            }
                         }
                     }
                 }
