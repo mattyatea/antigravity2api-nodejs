@@ -117,6 +117,11 @@ export function generateGeminiRequestBody(geminiBody: any, modelName: string, to
     const request = JSON.parse(JSON.stringify(geminiBody));
 
     if (request.contents && Array.isArray(request.contents)) {
+        request.contents.forEach((content: any) => {
+            if (!content.role) {
+                content.role = 'user';
+            }
+        });
         processFunctionCallIds(request.contents);
 
         if (enableThinking) {
