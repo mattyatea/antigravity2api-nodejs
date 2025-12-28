@@ -240,7 +240,14 @@ export const handleGeminiRequest = async (c: Context, modelName: string, isStrea
             return c.json({ error: { code: 500, message: 'No token available, please run npm run login to get a token', status: "INTERNAL" } }, 500);
         }
 
-        const body = await c.req.json();
+        const rawBody = c.get('rawBody') as string | undefined;
+        let body: any;
+        try {
+            body = rawBody ? JSON.parse(rawBody) : await c.req.json();
+        } catch (parseError) {
+            logger.error('Gemini request JSON parse failed');
+            return c.json({ error: { code: 400, message: 'Invalid JSON body', status: "INVALID_ARGUMENT" } }, 400);
+        }
         const isImageModel = normalizedModelName.includes('-image');
         const requestBody = generateGeminiRequestBody(body, normalizedModelName, token);
 
