@@ -141,6 +141,7 @@ export const handleCreateResponse = async (c: Context) => {
 
                 // Send response.created event
                 await writeResponseEvent(stream, streamEvents.createStartEvent());
+                logger.debug('[Responses] Sent response.created event');
 
                 // Send response.in_progress event
                 await writeResponseEvent(stream, streamEvents.createInProgressEvent());
@@ -150,6 +151,7 @@ export const handleCreateResponse = async (c: Context) => {
 
                 // Send content_part.added event
                 await writeResponseEvent(stream, streamEvents.createContentPartAdded(itemId, outputIndex, contentIndex));
+                logger.debug('[Responses] Sent initial events (created, in_progress, output_item.added, content_part.added)');
 
                 if (isImageModel) {
                     const { content, usage } = await with429Retry(
