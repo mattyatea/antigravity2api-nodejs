@@ -371,6 +371,16 @@ function formatResponsesUsage(usage: any): any {
 
 /**
  * Create streaming response events for Responses API
+ * 
+ * Event sequence must be:
+ * 1. response.created
+ * 2. response.in_progress
+ * 3. response.output_item.added (for each output item)
+ * 4. response.content_part.added (for each content part)
+ * 5. response.output_text.delta (for text deltas)
+ * 6. response.content_part.done
+ * 7. response.output_item.done
+ * 8. response.completed
  */
 export function createResponseStreamEvents(
     responseId: string,
@@ -378,14 +388,19 @@ export function createResponseStreamEvents(
     requestParams: any
 ): {
     createStartEvent: () => any;
-    createContentDelta: (content: string, index: number) => any;
-    createReasoningDelta: (content: string) => any;
-    createToolCallDelta: (toolCall: any) => any;
+    createInProgressEvent: () => any;
+    createOutputItemAdded: (itemId: string, outputIndex: number) => any;
+    createContentPartAdded: (itemId: string, outputIndex: number, contentIndex: number) => any;
+    createContentDelta: (content: string, itemId: string, outputIndex: number, contentIndex: number) => any;
+    createReasoningDelta: (content: string, itemId: string, outputIndex: number) => any;
+    createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => any;
+    createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => any;
+    createOutputItemDone: (itemId: string, outputIndex: number, content: any[]) => any;
     createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => any;
     createDoneEvent: () => string;
+    generateItemId: () => string;
 } {
-    const messageId = generateMessageId();
-    let outputIndex = 0;
+    const createdAt = Math.floor(Date.now() / 1000);
 
     return {
         createStartEvent: () => ({
@@ -393,7 +408,7 @@ export function createResponseStreamEvents(
             response: {
                 id: responseId,
                 object: 'response',
-                created_at: Math.floor(Date.now() / 1000),
+                created_at: createdAt,
                 status: 'in_progress',
                 model,
                 output: [],
@@ -410,28 +425,87 @@ export function createResponseStreamEvents(
             }
         }),
 
-        createContentDelta: (content: string, index: number) => ({
+        createInProgressEvent: () => ({
+            type: 'response.in_progress',
+            response: {
+                id: responseId,
+                object: 'response',
+                created_at: createdAt,
+                status: 'in_progress',
+                model
+            }
+        }),
+
+        createOutputItemAdded: (itemId: string, outputIndex: number) => ({
+            type: 'response.output_item.added',
+            output_index: outputIndex,
+            item: {
+                type: 'message',
+                id: itemId,
+                status: 'in_progress',
+                role: 'assistant',
+                content: []
+            }
+        }),
+
+        createContentPartAdded: (itemId: string, outputIndex: number, contentIndex: number) => ({
+            type: 'response.content_part.added',
+            item_id: itemId,
+            output_index: outputIndex,
+            content_index: contentIndex,
+            part: {
+                type: 'output_text',
+                text: '',
+                annotations: []
+            }
+        }),
+
+        createContentDelta: (content: string, itemId: string, outputIndex: number, contentIndex: number) => ({
             type: 'response.output_text.delta',
-            item_id: messageId,
-            output_index: index,
-            content_index: 0,
+            item_id: itemId,
+            output_index: outputIndex,
+            content_index: contentIndex,
             delta: content
         }),
 
-        createReasoningDelta: (content: string) => ({
+        createReasoningDelta: (content: string, itemId: string, outputIndex: number) => ({
             type: 'response.reasoning.delta',
-            item_id: messageId,
+            item_id: itemId,
             output_index: outputIndex,
             delta: content
         }),
 
-        createToolCallDelta: (toolCall: any) => ({
+        createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => ({
             type: 'response.function_call_arguments.delta',
-            item_id: messageId,
-            output_index: outputIndex++,
+            item_id: itemId,
+            output_index: outputIndex,
             call_id: toolCall.id,
             name: toolCall.function?.name || toolCall.name,
             delta: toolCall.function?.arguments || toolCall.arguments
+        }),
+
+        createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => ({
+            type: 'response.content_part.done',
+            item_id: itemId,
+            output_index: outputIndex,
+            content_index: contentIndex,
+            part: {
+                type: 'output_text',
+                text,
+                annotations: []
+            }
+        }),
+
+        createOutputItemDone: (itemId: string, outputIndex: number, content: any[]) => ({
+            type: 'response.output_item.done',
+            output_index: outputIndex,
+            item: {
+                type: 'message',
+                id: itemId,
+                status: 'completed',
+                role: 'assistant',
+                content
+            }
         }),
 
         createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => ({
@@ -439,7 +513,9 @@ export function createResponseStreamEvents(
             response: formatResponsesOutput(responseId, model, content, reasoningContent, toolCalls, usage, requestParams)
         }),
 
-        createDoneEvent: () => '[DONE]'
+        createDoneEvent: () => '[DONE]',
+
+        generateItemId: () => generateMessageId()
     };
 }
 

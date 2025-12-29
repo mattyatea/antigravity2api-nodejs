@@ -127,9 +127,21 @@ export const handleCreateResponse = async (c: Context) => {
 
             try {
                 const streamEvents = createResponseStreamEvents(responseId, modelName, requestParams);
+                const itemId = streamEvents.generateItemId();
+                const outputIndex = 0;
+                const contentIndex = 0;
 
                 // Send response.created event
                 await writeResponseEvent(stream, streamEvents.createStartEvent());
+
+                // Send response.in_progress event
+                await writeResponseEvent(stream, streamEvents.createInProgressEvent());
+
+                // Send output_item.added event
+                await writeResponseEvent(stream, streamEvents.createOutputItemAdded(itemId, outputIndex));
+
+                // Send content_part.added event
+                await writeResponseEvent(stream, streamEvents.createContentPartAdded(itemId, outputIndex, contentIndex));
 
                 if (isImageModel) {
                     const { content, usage } = await with429Retry(
@@ -138,8 +150,15 @@ export const handleCreateResponse = async (c: Context) => {
                         'responses.stream.image '
                     );
 
-                    // Send content delta
-                    await writeResponseEvent(stream, streamEvents.createContentDelta(content, 0));
+                    // Send content deltas
+                    await writeResponseEvent(stream, streamEvents.createContentDelta(content, itemId, outputIndex, contentIndex));
+
+                    // Send content_part.done
+                    await writeResponseEvent(stream, streamEvents.createContentPartDone(itemId, outputIndex, contentIndex, content));
+
+                    // Send output_item.done
+                    const messageContent = [{ type: 'output_text', text: content, annotations: [] }];
+                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
 
                     // Send completed event
                     await writeResponseEvent(stream, streamEvents.createCompletedEvent(content, null, [], usage));
@@ -148,7 +167,6 @@ export const handleCreateResponse = async (c: Context) => {
                     let accumulatedReasoning = '';
                     let accumulatedToolCalls: any[] = [];
                     let usageData = null;
-                    let contentIndex = 0;
 
                     await with429Retry(
                         () => generateAssistantResponse(requestBody, token, async (data: any) => {
@@ -156,20 +174,45 @@ export const handleCreateResponse = async (c: Context) => {
                                 usageData = data.usage;
                             } else if (data.type === 'reasoning') {
                                 accumulatedReasoning += data.reasoning_content || '';
-                                await writeResponseEvent(stream, streamEvents.createReasoningDelta(data.reasoning_content || ''));
+                                await writeResponseEvent(stream, streamEvents.createReasoningDelta(data.reasoning_content || '', itemId, outputIndex));
                             } else if (data.type === 'tool_calls') {
                                 for (const toolCall of data.tool_calls) {
                                     accumulatedToolCalls.push(toolCall);
-                                    await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall));
+                                    await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall, itemId, outputIndex));
                                 }
                             } else if (data.content) {
                                 accumulatedContent += data.content;
-                                await writeResponseEvent(stream, streamEvents.createContentDelta(data.content, contentIndex++));
+                                await writeResponseEvent(stream, streamEvents.createContentDelta(data.content, itemId, outputIndex, contentIndex));
                             }
                         }),
                         safeRetries,
                         'responses.stream '
                     );
+
+                    // Send content_part.done
+                    await writeResponseEvent(stream, streamEvents.createContentPartDone(itemId, outputIndex, contentIndex, accumulatedContent));
+
+                    // Build message content for output_item.done
+                    const messageContent: any[] = [];
+                    if (accumulatedReasoning) {
+                        messageContent.push({ type: 'reasoning', text: accumulatedReasoning });
+                    }
+                    if (accumulatedContent) {
+                        messageContent.push({ type: 'output_text', text: accumulatedContent, annotations: [] });
+                    }
+                    for (const toolCall of accumulatedToolCalls) {
+                        messageContent.push({
+                            type: 'function_call',
+                            id: toolCall.id,
+                            call_id: toolCall.id,
+                            name: toolCall.function?.name || toolCall.name,
+                            arguments: toolCall.function?.arguments || toolCall.arguments,
+                            status: 'completed'
+                        });
+                    }
+
+                    // Send output_item.done
+                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
 
                     // Send completed event
                     const completedEvent = streamEvents.createCompletedEvent(
