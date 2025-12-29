@@ -237,15 +237,19 @@ export const handleCreateResponse = async (c: Context) => {
                     await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
                     logger.debug('[Responses] Sent output_item.done');
 
-                    // Send completed event
+                    // Send done/completed event
+                    // Use 'response.done' when there are tool calls (requires_action)
+                    // Use 'response.completed' when the response is fully completed
+                    const hasToolCalls = accumulatedToolCalls.length > 0;
                     const completedEvent = streamEvents.createCompletedEvent(
                         accumulatedContent,
                         accumulatedReasoning || null,
                         accumulatedToolCalls,
-                        usageData
+                        usageData,
+                        hasToolCalls  // Pass flag to determine event type
                     );
                     await writeResponseEvent(stream, completedEvent);
-                    logger.debug('[Responses] Sent response.completed event');
+                    logger.debug(`[Responses] Sent ${hasToolCalls ? 'response.done' : 'response.completed'} event`);
 
                     // Store response if requested
                     if (store) {

@@ -403,7 +403,7 @@ export function createResponseStreamEvents(
     createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => any;
     createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => any;
     createOutputItemDone: (itemId: string, outputIndex: number, content: any[]) => any;
-    createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => any;
+    createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any, isRequiresAction?: boolean) => any;
     createDoneEvent: () => string;
     generateItemId: () => string;
 } {
@@ -515,8 +515,9 @@ export function createResponseStreamEvents(
             }
         }),
 
-        createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => ({
-            type: 'response.completed',
+        createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any, isRequiresAction = false) => ({
+            // Use 'response.done' when requires_action, 'response.completed' when fully completed
+            type: isRequiresAction ? 'response.done' : 'response.completed',
             response: formatResponsesOutput(responseId, model, content, reasoningContent, toolCalls, usage, requestParams)
         }),
 
