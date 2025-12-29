@@ -180,20 +180,28 @@ export const handleCreateResponse = async (c: Context) => {
 
                     await with429Retry(
                         () => generateAssistantResponse(requestBody, token, async (data: any) => {
-                            logger.debug('[Responses] Stream callback received:', data.type || 'content', data.content?.substring(0, 50) || '');
+                            logger.debug('[Responses] Callback data:', JSON.stringify(data).substring(0, 200));
                             if (data.type === 'usage') {
                                 usageData = data.usage;
+                                logger.debug('[Responses] Received usage data');
                             } else if (data.type === 'reasoning') {
                                 accumulatedReasoning += data.reasoning_content || '';
                                 await writeResponseEvent(stream, streamEvents.createReasoningDelta(data.reasoning_content || '', itemId, outputIndex));
+                                logger.debug('[Responses] Sent reasoning delta');
                             } else if (data.type === 'tool_calls') {
                                 for (const toolCall of data.tool_calls) {
                                     accumulatedToolCalls.push(toolCall);
                                     await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall, itemId, outputIndex));
                                 }
-                            } else if (data.content) {
-                                accumulatedContent += data.content;
-                                await writeResponseEvent(stream, streamEvents.createContentDelta(data.content, itemId, outputIndex, contentIndex));
+                                logger.debug('[Responses] Sent tool_calls delta, count:', data.tool_calls.length);
+                            } else if (data.type === 'text' || data.content) {
+                                // Handle both 'text' type from stream-parser and direct content
+                                const textContent = data.content || '';
+                                if (textContent) {
+                                    accumulatedContent += textContent;
+                                    await writeResponseEvent(stream, streamEvents.createContentDelta(textContent, itemId, outputIndex, contentIndex));
+                                    logger.debug('[Responses] Sent content delta, length:', textContent.length);
+                                }
                             }
                         }),
                         safeRetries,
