@@ -31,14 +31,11 @@ const responseStore = new Map<string, any>();
 
 /**
  * Write SSE event for Responses API
+ * Note: Use data-only format (no event: field) for compatibility with OpenAI clients
  */
 async function writeResponseEvent(stream: any, event: any) {
-    const eventType = event.type || 'message';
     const data = JSON.stringify(event);
-    await stream.writeSSE({
-        event: eventType,
-        data
-    });
+    await stream.writeSSE({ data });
 }
 
 /**
