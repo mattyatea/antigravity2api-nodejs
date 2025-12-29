@@ -10,6 +10,9 @@ import memoryManager, { registerMemoryPoolCleanup } from './memory-manager.js';
 import { DEFAULT_HEARTBEAT_INTERVAL } from '../config/constants.js';
 
 const HEARTBEAT_INTERVAL = config.server.heartbeatInterval || DEFAULT_HEARTBEAT_INTERVAL;
+const RETRY_BASE_DELAY_MS = 500;
+const RETRY_MAX_DELAY_MS = 10000;
+const RETRY_JITTER_MS = 250;
 
 export const createResponseMeta = () => ({
     id: `chatcmpl-${Date.now()}`,
@@ -87,6 +90,46 @@ export const writeHeartbeat = async (stream: any) => {
     }
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const resolveRetryAfterMs = (error: any): number | null => {
+    if (typeof error?.retryAfterMs === 'number' && Number.isFinite(error.retryAfterMs)) {
+        return Math.max(0, error.retryAfterMs);
+    }
+    if (typeof error?.retryAfter === 'number' && Number.isFinite(error.retryAfter)) {
+        return Math.max(0, error.retryAfter * 1000);
+    }
+    const headerValue = error?.response?.headers?.['retry-after'];
+    if (headerValue === undefined || headerValue === null) return null;
+    const raw = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.max(0, raw * 1000);
+    }
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        const asNumber = Number(trimmed);
+        if (Number.isFinite(asNumber)) {
+            return Math.max(0, asNumber * 1000);
+        }
+        const asDate = Date.parse(trimmed);
+        if (!Number.isNaN(asDate)) {
+            return Math.max(0, asDate - Date.now());
+        }
+    }
+    return null;
+};
+
+const calculateRetryDelayMs = (attempt: number, retryAfterMs: number | null): number => {
+    const exponentialDelay = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * (2 ** Math.max(0, attempt)));
+    const jitter = Math.floor(Math.random() * RETRY_JITTER_MS);
+    const candidateDelay = exponentialDelay + jitter;
+    if (typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)) {
+        return Math.max(candidateDelay, retryAfterMs);
+    }
+    return candidateDelay;
+};
+
 // Create error chunk for streaming responses (OpenAI compatible format)
 export const createErrorStreamChunk = (error: any, statusCode: number) => {
     const message = error.message || 'Internal server error';
@@ -110,9 +153,14 @@ export const with429Retry = async (fn: (attempt: number) => Promise<any>, maxRet
         } catch (error: any) {
             const status = Number(error.status || error.statusCode || error.response?.status);
             if (status === 429 && attempt < retries) {
+                const retryAfterMs = resolveRetryAfterMs(error);
+                const delayMs = calculateRetryDelayMs(attempt, retryAfterMs);
                 const nextAttempt = attempt + 1;
-                logger.warn(`${loggerPrefix}Received 429, retrying attempt ${nextAttempt} (total ${retries})`);
+                logger.warn(`${loggerPrefix}Received 429, retrying attempt ${nextAttempt} (total ${retries}) after ${Math.ceil(delayMs)}ms`);
                 attempt = nextAttempt;
+                if (delayMs > 0) {
+                    await sleep(delayMs);
+                }
                 continue;
             }
             throw error;

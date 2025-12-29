@@ -158,9 +158,33 @@ function logUpstreamRequest(url: string, requestBody: any) {
     logger.info('[Upstream Request]', url, payload);
 }
 
+function parseRetryAfterMs(value: any): number | null {
+    if (value === undefined || value === null) return null;
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return Math.max(0, raw * 1000);
+    }
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        const asNumber = Number(trimmed);
+        if (Number.isFinite(asNumber)) {
+            return Math.max(0, asNumber * 1000);
+        }
+        const asDate = Date.parse(trimmed);
+        if (!Number.isNaN(asDate)) {
+            return Math.max(0, asDate - Date.now());
+        }
+    }
+    return null;
+}
+
 // Unified error handling
 async function handleApiError(error: any, token: any): Promise<never> {
     const status = error.response?.status || error.status || error.statusCode || 500;
+    const retryAfterMs = status === 429
+        ? parseRetryAfterMs(error.response?.headers?.['retry-after'])
+        : null;
     let errorBody = error.message;
 
     if (error.response?.data?.readable) {
@@ -177,13 +201,13 @@ async function handleApiError(error: any, token: any): Promise<never> {
 
     if (status === 403) {
         if (JSON.stringify(errorBody).includes("The caller does not")) {
-            throw createApiError(`Exceeded model maximum context. Error details: ${errorBody}`, status, errorBody);
+            throw createApiError(`Exceeded model maximum context. Error details: ${errorBody}`, status, errorBody, retryAfterMs);
         }
         tokenManager.disableCurrentToken(token);
-        throw createApiError(`Account has no access permission, disabled automatically. Error details: ${errorBody}`, status, errorBody);
+        throw createApiError(`Account has no access permission, disabled automatically. Error details: ${errorBody}`, status, errorBody, retryAfterMs);
     }
 
-    throw createApiError(`API request failed (${status}): ${errorBody}`, status, errorBody);
+    throw createApiError(`API request failed (${status}): ${errorBody}`, status, errorBody, retryAfterMs);
 }
 
 

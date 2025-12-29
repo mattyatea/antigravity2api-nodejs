@@ -28,12 +28,14 @@ export class AppError extends Error {
  */
 export class UpstreamApiError extends AppError {
     rawBody: any;
+    retryAfterMs: number | null;
     isUpstreamApiError: boolean;
 
-    constructor(message: string, statusCode: number, rawBody: any = null) {
+    constructor(message: string, statusCode: number, rawBody: any = null, retryAfterMs: number | null = null) {
         super(message, statusCode, 'upstream_api_error');
         this.name = 'UpstreamApiError';
         this.rawBody = rawBody;
+        this.retryAfterMs = retryAfterMs;
         this.isUpstreamApiError = true;
     }
 }
@@ -110,8 +112,8 @@ export class TokenError extends AppError {
 /**
  * Create Upstream API Error (Factory Function)
  */
-export function createApiError(message: string, status: number, rawBody: any) {
-    return new UpstreamApiError(message, status, rawBody);
+export function createApiError(message: string, status: number, rawBody: any, retryAfterMs: number | null = null) {
+    return new UpstreamApiError(message, status, rawBody, retryAfterMs);
 }
 
 /**
