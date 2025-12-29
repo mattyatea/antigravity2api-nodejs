@@ -179,10 +179,113 @@ function parseRetryAfterMs(value: any): number | null {
     return null;
 }
 
+function safeJsonParse(value: string): any | null {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+}
+
+function extractUpstreamError(errorBody: any): any | null {
+    if (!errorBody) return null;
+    if (typeof errorBody === 'string') {
+        const parsed = safeJsonParse(errorBody);
+        if (parsed && typeof parsed === 'object') {
+            return parsed.error || parsed;
+        }
+        return null;
+    }
+    if (typeof errorBody === 'object') {
+        return errorBody.error || errorBody;
+    }
+    return null;
+}
+
+function parseDurationMs(value: any): number | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.max(0, value * 1000);
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const msMatch = trimmed.match(/^([\d.]+)\s*ms$/i);
+        if (msMatch) {
+            const msValue = Number(msMatch[1]);
+            return Number.isFinite(msValue) ? Math.max(0, msValue) : null;
+        }
+        const sMatch = trimmed.match(/^([\d.]+)\s*s$/i);
+        if (sMatch) {
+            const sValue = Number(sMatch[1]);
+            return Number.isFinite(sValue) ? Math.max(0, sValue * 1000) : null;
+        }
+        const asNumber = Number(trimmed);
+        if (Number.isFinite(asNumber)) {
+            return Math.max(0, asNumber * 1000);
+        }
+        return null;
+    }
+    if (typeof value === 'object') {
+        const seconds = Number(value.seconds ?? 0);
+        const nanos = Number(value.nanos ?? 0);
+        if (Number.isFinite(seconds) || Number.isFinite(nanos)) {
+            return Math.max(0, (Number.isFinite(seconds) ? seconds : 0) * 1000 + (Number.isFinite(nanos) ? nanos : 0) / 1e6);
+        }
+    }
+    return null;
+}
+
+function parseTimestampMs(value: any): number | null {
+    if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        if (!Number.isNaN(parsed)) {
+            return Math.max(0, parsed - Date.now());
+        }
+    }
+    return null;
+}
+
+function extractRetryAfterMsFromBody(errorBody: any): number | null {
+    const upstreamError = extractUpstreamError(errorBody);
+    if (!upstreamError || typeof upstreamError !== 'object') return null;
+
+    const directRetry = parseDurationMs(upstreamError.retryDelay);
+    if (directRetry !== null) return directRetry;
+
+    const details = Array.isArray(upstreamError.details) ? upstreamError.details : [];
+    for (const detail of details) {
+        const retryDelay = parseDurationMs(detail?.retryDelay);
+        if (retryDelay !== null) return retryDelay;
+        const quotaResetDelay = parseDurationMs(detail?.metadata?.quotaResetDelay);
+        if (quotaResetDelay !== null) return quotaResetDelay;
+        const quotaResetTime = parseTimestampMs(detail?.metadata?.quotaResetTimeStamp);
+        if (quotaResetTime !== null) return quotaResetTime;
+    }
+
+    const fallbackResetDelay = parseDurationMs(upstreamError.quotaResetDelay);
+    if (fallbackResetDelay !== null) return fallbackResetDelay;
+    const fallbackResetTime = parseTimestampMs(upstreamError.quotaResetTimeStamp);
+    if (fallbackResetTime !== null) return fallbackResetTime;
+
+    return null;
+}
+
+function formatRetryAfterMs(retryAfterMs: number): string {
+    if (!Number.isFinite(retryAfterMs)) return '';
+    if (retryAfterMs < 1000) return `${Math.ceil(retryAfterMs)}ms`;
+    const seconds = retryAfterMs / 1000;
+    if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+    const minutes = seconds / 60;
+    if (minutes < 60) return `${minutes.toFixed(minutes < 10 ? 1 : 0)}m`;
+    const hours = minutes / 60;
+    return `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
+}
+
 // Unified error handling
 async function handleApiError(error: any, token: any): Promise<never> {
     const status = error.response?.status || error.status || error.statusCode || 500;
-    const retryAfterMs = status === 429
+    let retryAfterMs = status === 429
         ? parseRetryAfterMs(error.response?.headers?.['retry-after'])
         : null;
     let errorBody = error.message;
@@ -199,6 +302,10 @@ async function handleApiError(error: any, token: any): Promise<never> {
         errorBody = error.response.data;
     }
 
+    if (status === 429 && retryAfterMs === null) {
+        retryAfterMs = extractRetryAfterMsFromBody(errorBody);
+    }
+
     if (status === 403) {
         if (JSON.stringify(errorBody).includes("The caller does not")) {
             throw createApiError(`Exceeded model maximum context. Error details: ${errorBody}`, status, errorBody, retryAfterMs);
@@ -207,7 +314,19 @@ async function handleApiError(error: any, token: any): Promise<never> {
         throw createApiError(`Account has no access permission, disabled automatically. Error details: ${errorBody}`, status, errorBody, retryAfterMs);
     }
 
-    throw createApiError(`API request failed (${status}): ${errorBody}`, status, errorBody, retryAfterMs);
+    let message = `API request failed (${status}): ${errorBody}`;
+    if (status === 429) {
+        const upstreamMessage = extractUpstreamError(errorBody)?.message;
+        message = upstreamMessage || `API request failed (${status})`;
+        if (retryAfterMs !== null) {
+            const formattedRetry = formatRetryAfterMs(retryAfterMs);
+            if (formattedRetry) {
+                message = `${message} (retry after ${formattedRetry})`;
+            }
+        }
+    }
+
+    throw createApiError(message, status, errorBody, retryAfterMs);
 }
 
 

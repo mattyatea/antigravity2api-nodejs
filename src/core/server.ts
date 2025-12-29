@@ -13,6 +13,15 @@ import { handleOpenAIRequest } from '../handlers/openai.js';
 import { handleGetModels } from '../handlers/models.js';
 import { handleClaudeRequest } from '../handlers/claude.js';
 import { handleGeminiModelsList, handleGeminiModelDetail, handleGeminiRequest } from '../handlers/gemini.js';
+import {
+    handleCreateResponse,
+    handleGetResponse,
+    handleDeleteResponse,
+    handleCancelResponse,
+    handleListInputItems,
+    handleGetInputTokens,
+    handleCompactResponse
+} from '../handlers/responses.js';
 import admin from '../handlers/admin.js';
 // @ts-ignore
 import { closeRequester } from '../services/ai/client.js';
@@ -41,6 +50,15 @@ app.use('/*', serveStatic({ root: './public' }));
 // OpenAI
 app.post('/v1/chat/completions', handleOpenAIRequest);
 app.get('/v1/models', handleGetModels);
+
+// OpenAI Responses API
+app.post('/v1/responses', handleCreateResponse);
+app.post('/v1/responses/input_tokens', handleGetInputTokens);
+app.post('/v1/responses/compact', handleCompactResponse);
+app.get('/v1/responses/:response_id', handleGetResponse);
+app.delete('/v1/responses/:response_id', handleDeleteResponse);
+app.post('/v1/responses/:response_id/cancel', handleCancelResponse);
+app.get('/v1/responses/:response_id/input_items', handleListInputItems);
 
 // Claude
 app.post('/v1/messages', async (c) => {
