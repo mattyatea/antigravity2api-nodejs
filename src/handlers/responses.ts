@@ -91,7 +91,14 @@ export const handleCreateResponse = async (c: Context) => {
 
     const modelName = model || 'gpt-4o';
     const isImageModel = modelName.includes('-image');
+
+    // Debug logging
+    logger.debug('[Responses] Input received:', JSON.stringify(effectiveInput).substring(0, 500));
+
     const requestBody = generateResponsesRequestBody(effectiveInput, modelName, instructions, params, tools, token);
+
+    // Debug logging for request body
+    logger.debug('[Responses] Request body contents count:', requestBody?.request?.contents?.length || 0);
 
     if (isImageModel) {
         prepareImageRequest(requestBody);

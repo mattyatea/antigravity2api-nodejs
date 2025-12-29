@@ -154,26 +154,33 @@ function responsesInputToAntigravity(input: string | ResponsesInputItem[], enabl
     // Handle array of input items
     if (Array.isArray(input)) {
         for (const item of input) {
+            // Skip null/undefined items
+            if (!item) continue;
+
             const type = item.type;
             const role = item.role;
 
-            // User message
-            if (role === 'user' || type === 'message' && role === 'user') {
+            // User message: role === 'user' OR (type === 'message' AND role === 'user')
+            if (role === 'user' || (type === 'message' && role === 'user')) {
                 const extracted = extractImagesFromContent(item.content);
                 pushUserMessage(extracted, antigravityMessages);
             }
-            // Assistant/model message
-            else if (role === 'assistant' || type === 'message' && role === 'assistant') {
+            // Assistant/model message: role === 'assistant' OR (type === 'message' AND role === 'assistant')
+            else if (role === 'assistant' || (type === 'message' && role === 'assistant')) {
                 handleAssistantMessage(item, antigravityMessages, enableThinking, actualModelName, sessionId);
             }
             // Function call output (tool result)
             else if (type === 'function_call_output') {
                 handleFunctionCallOutput(item, antigravityMessages);
             }
-            // Direct text input (no type/role)
+            // Direct object with content but no type/role - treat as user message
             else if (!type && !role && typeof item === 'object' && 'content' in item) {
                 const extracted = extractImagesFromContent(item.content);
                 pushUserMessage(extracted, antigravityMessages);
+            }
+            // Handle item that is just a string in an array
+            else if (typeof item === 'string') {
+                pushUserMessage({ text: item, images: [] }, antigravityMessages);
             }
         }
     }
