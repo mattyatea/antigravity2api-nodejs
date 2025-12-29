@@ -52,6 +52,9 @@ function convertSingleTool(
 /**
  * Convert OpenAI format tool list to Antigravity format
  * OpenAI Format: [{ type: 'function', function: { name, description, parameters } }]
+ * 
+ * IMPORTANT: All function declarations must be in a single tools object
+ * because the upstream API doesn't support multiple non-search tool objects.
  */
 export function convertOpenAIToolsToAntigravity(
     openaiTools: any[] | undefined,
@@ -60,7 +63,9 @@ export function convertOpenAIToolsToAntigravity(
 ): AntigravityTool[] {
     if (!openaiTools || openaiTools.length === 0) return [];
 
-    return openaiTools.map((tool) => {
+    const functionDeclarations: FunctionDeclaration[] = [];
+
+    for (const tool of openaiTools) {
         const func = tool.function || {};
         const declaration = convertSingleTool(
             func.name,
@@ -69,16 +74,19 @@ export function convertOpenAIToolsToAntigravity(
             sessionId,
             actualModelName
         );
+        functionDeclarations.push(declaration);
+    }
 
-        return {
-            functionDeclarations: [declaration]
-        };
-    });
+    // Return a single tools object with all function declarations
+    return [{ functionDeclarations }];
 }
 
 /**
  * Convert Claude format tool list to Antigravity format
  * Claude Format: [{ name, description, input_schema }]
+ * 
+ * IMPORTANT: All function declarations must be in a single tools object
+ * because the upstream API doesn't support multiple non-search tool objects.
  */
 export function convertClaudeToolsToAntigravity(
     claudeTools: any[] | undefined,
@@ -87,7 +95,9 @@ export function convertClaudeToolsToAntigravity(
 ): AntigravityTool[] {
     if (!claudeTools || claudeTools.length === 0) return [];
 
-    return claudeTools.map((tool) => {
+    const functionDeclarations: FunctionDeclaration[] = [];
+
+    for (const tool of claudeTools) {
         const declaration = convertSingleTool(
             tool.name,
             tool.description,
@@ -95,11 +105,11 @@ export function convertClaudeToolsToAntigravity(
             sessionId,
             actualModelName
         );
+        functionDeclarations.push(declaration);
+    }
 
-        return {
-            functionDeclarations: [declaration]
-        };
-    });
+    // Return a single tools object with all function declarations
+    return [{ functionDeclarations }];
 }
 
 /**
@@ -107,6 +117,9 @@ export function convertClaudeToolsToAntigravity(
  * Gemini Format:
  * 1. [{ functionDeclarations: [{ name, description, parameters }] }]
  * 2. [{ name, description, parameters }]
+ * 
+ * IMPORTANT: All function declarations must be in a single tools object
+ * because the upstream API doesn't support multiple non-search tool objects.
  */
 export function convertGeminiToolsToAntigravity(
     geminiTools: any[] | undefined,
@@ -115,18 +128,19 @@ export function convertGeminiToolsToAntigravity(
 ): AntigravityTool[] {
     if (!geminiTools || geminiTools.length === 0) return [];
 
-    return geminiTools.map((tool) => {
+    const functionDeclarations: FunctionDeclaration[] = [];
+
+    for (const tool of geminiTools) {
         // Format 1: Already functionDeclarations format
         if (tool.functionDeclarations) {
-            return {
-                functionDeclarations: tool.functionDeclarations.map((fd: any) =>
+            for (const fd of tool.functionDeclarations) {
+                functionDeclarations.push(
                     convertSingleTool(fd.name, fd.description, fd.parameters, sessionId, actualModelName)
-                )
-            };
+                );
+            }
         }
-
         // Format 2: Single tool definition format
-        if (tool.name) {
+        else if (tool.name) {
             const declaration = convertSingleTool(
                 tool.name,
                 tool.description,
@@ -134,13 +148,12 @@ export function convertGeminiToolsToAntigravity(
                 sessionId,
                 actualModelName
             );
-
-            return {
-                functionDeclarations: [declaration]
-            };
+            functionDeclarations.push(declaration);
         }
+        // Unknown format, skip
+    }
 
-        // Unknown format, return as is
-        return tool;
-    });
+    // Return a single tools object with all function declarations
+    if (functionDeclarations.length === 0) return [];
+    return [{ functionDeclarations }];
 }
