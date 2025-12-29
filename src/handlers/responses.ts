@@ -208,8 +208,11 @@ export const handleCreateResponse = async (c: Context) => {
                         'responses.stream '
                     );
 
+                    logger.debug('[Responses] Stream processing complete, sending final events');
+
                     // Send content_part.done
                     await writeResponseEvent(stream, streamEvents.createContentPartDone(itemId, outputIndex, contentIndex, accumulatedContent));
+                    logger.debug('[Responses] Sent content_part.done');
 
                     // Build message content for output_item.done
                     const messageContent: any[] = [];
@@ -232,6 +235,7 @@ export const handleCreateResponse = async (c: Context) => {
 
                     // Send output_item.done
                     await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
+                    logger.debug('[Responses] Sent output_item.done');
 
                     // Send completed event
                     const completedEvent = streamEvents.createCompletedEvent(
@@ -241,6 +245,7 @@ export const handleCreateResponse = async (c: Context) => {
                         usageData
                     );
                     await writeResponseEvent(stream, completedEvent);
+                    logger.debug('[Responses] Sent response.completed event');
 
                     // Store response if requested
                     if (store) {
