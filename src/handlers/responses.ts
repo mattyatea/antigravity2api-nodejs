@@ -31,11 +31,15 @@ const responseStore = new Map<string, any>();
 
 /**
  * Write SSE event for Responses API
- * Note: Use data-only format (no event: field) for compatibility with OpenAI clients
+ * Responses API uses SSE format with both event: and data: fields
  */
 async function writeResponseEvent(stream: any, event: any) {
+    const eventType = event.type || 'message';
     const data = JSON.stringify(event);
-    await stream.writeSSE({ data });
+    await stream.writeSSE({
+        event: eventType,
+        data
+    });
 }
 
 /**
@@ -174,6 +178,7 @@ export const handleCreateResponse = async (c: Context) => {
 
                     await with429Retry(
                         () => generateAssistantResponse(requestBody, token, async (data: any) => {
+                            logger.debug('[Responses] Stream callback received:', data.type || 'content', data.content?.substring(0, 50) || '');
                             if (data.type === 'usage') {
                                 usageData = data.usage;
                             } else if (data.type === 'reasoning') {
