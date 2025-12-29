@@ -164,9 +164,15 @@ function processModelThoughts(content: any, reasoningSignature: string, toolSign
 }
 
 export function generateGeminiRequestBody(geminiBody: any, modelName: string, token: any) {
-    const enableThinking = isEnableThinking(modelName);
-    const actualModelName = modelMapping(modelName);
     const request = JSON.parse(JSON.stringify(geminiBody));
+    const normalizedParams = normalizeGeminiParameters(request.generationConfig || {});
+
+    const hasThinkingConfig = Boolean(request.generationConfig?.thinkingConfig);
+    const isThinkingExplicitlyEnabled = hasThinkingConfig && normalizedParams.thinking_budget !== 0;
+    const isThinkingExplicitlyDisabled = normalizedParams.thinking_budget === 0;
+
+    const enableThinking = !isThinkingExplicitlyDisabled && (isEnableThinking(modelName) || isThinkingExplicitlyEnabled);
+    const actualModelName = modelMapping(modelName);
 
     if (request.contents && Array.isArray(request.contents)) {
         request.contents.forEach((content: any) => {
@@ -188,8 +194,7 @@ export function generateGeminiRequestBody(geminiBody: any, modelName: string, to
     }
 
     const hadThinkingConfig = Boolean(request.generationConfig?.thinkingConfig);
-    // Process Gemini format parameters using unified parameter normalizer module
-    const normalizedParams = normalizeGeminiParameters(request.generationConfig || {});
+    // Parameters are already normalized at the start of the function
 
     // Convert to generationConfig format
     request.generationConfig = toGenerationConfig(normalizedParams, enableThinking, actualModelName);

@@ -271,6 +271,7 @@ export function modelMapping(modelName: string): string {
 export function isEnableThinking(modelName: string): boolean {
     return modelName.includes('-thinking') ||
         modelName === 'gemini-2.5-pro' ||
+        modelName === 'gemini-2.0-flash-exp' ||
         modelName.startsWith('gemini-3-pro-') ||
         modelName === 'rev19-uic3-1p' ||
         modelName === 'gpt-oss-120b-medium';
