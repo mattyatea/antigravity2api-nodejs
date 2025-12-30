@@ -140,6 +140,30 @@ function handleFunctionCallOutput(message: ResponsesInputItem, antigravityMessag
 }
 
 /**
+ * Handle standalone function call item
+ */
+function handleFunctionCallItem(item: ResponsesInputItem, antigravityMessages: any[], enableThinking: boolean, actualModelName: string, sessionId: string) {
+    const { toolSignature } = getSignatureContext(sessionId, actualModelName);
+    const safeName = processToolName((item as any).name, sessionId, actualModelName);
+    const signature = enableThinking ? ((item as any).call_id ? toolSignature : null) : null;
+
+    const functionCallPart = createFunctionCallPart((item as any).call_id || item.id, safeName, (item as any).arguments, signature);
+
+    // Try to append to last message if it is a model message
+    const lastMessage = antigravityMessages.length > 0 ? antigravityMessages[antigravityMessages.length - 1] : null;
+
+    if (lastMessage && lastMessage.role === 'model') {
+        lastMessage.parts.push(functionCallPart);
+    } else {
+        // Create new model message
+        antigravityMessages.push({
+            role: 'model',
+            parts: [functionCallPart]
+        });
+    }
+}
+
+/**
  * Convert Responses API input to Antigravity format messages
  */
 function responsesInputToAntigravity(input: string | ResponsesInputItem[], enableThinking: boolean, actualModelName: string, sessionId: string): any[] {
@@ -172,6 +196,10 @@ function responsesInputToAntigravity(input: string | ResponsesInputItem[], enabl
             // Function call output (tool result)
             else if (type === 'function_call_output') {
                 handleFunctionCallOutput(item, antigravityMessages);
+            }
+            // Standalone function call
+            else if (type === 'function_call') {
+                handleFunctionCallItem(item, antigravityMessages, enableThinking, actualModelName, sessionId);
             }
             // Direct object with content but no type/role - treat as user message
             else if (!type && !role && typeof item === 'object' && 'content' in item) {
