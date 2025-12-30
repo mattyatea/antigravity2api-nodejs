@@ -124,7 +124,8 @@ export const handleCreateResponse = async (c: Context) => {
         top_p: params.top_p,
         truncation: params.truncation,
         user: params.user,
-        metadata: params.metadata
+        metadata: params.metadata,
+        sessionId: token.sessionId
     };
 
     if (stream) {

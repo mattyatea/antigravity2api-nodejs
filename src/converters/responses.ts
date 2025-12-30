@@ -104,7 +104,8 @@ function handleAssistantMessage(message: ResponsesInputItem, antigravityMessages
             } else if (item.type === 'function_call') {
                 const safeName = processToolName(item.name, sessionId, actualModelName);
                 const callId = item.call_id || item.id;
-                const signature = enableThinking ? (callId ? toolSignature : null) : null;
+                // Use provided signature first, then fallback to current toolSignature if Thinking is enabled
+                const signature = item.signature || (enableThinking ? (callId ? toolSignature : null) : null);
                 toolCalls.push(createFunctionCallPart(callId, safeName, item.arguments, signature));
             } else if (item.type === 'reasoning' || item.type === 'thinking') {
                 if (enableThinking) {
@@ -147,7 +148,8 @@ function handleFunctionCallItem(item: ResponsesInputItem, antigravityMessages: a
     const { toolSignature } = getSignatureContext(sessionId, actualModelName);
     const safeName = processToolName((item as any).name, sessionId, actualModelName);
     const callId = (item as any).call_id || item.id;
-    const signature = enableThinking ? (callId ? toolSignature : null) : null;
+    // Use provided signature first, then fallback to current toolSignature if Thinking is enabled
+    const signature = (item as any).signature || (enableThinking ? (callId ? toolSignature : null) : null);
 
     const functionCallPart = createFunctionCallPart(callId, safeName, (item as any).arguments, signature);
 
@@ -333,6 +335,14 @@ export function formatResponsesOutput(
         output.push(messageOutput);
     }
 
+    // Get signatures if sessionId is available
+    let toolSignature: string | undefined;
+    if (requestParams.sessionId) {
+        const actualModelName = modelMapping(model);
+        const sigContext = getSignatureContext(requestParams.sessionId, actualModelName);
+        toolSignature = sigContext.toolSignature;
+    }
+
     // Add function calls as separate output items (not inside message content)
     if (toolCalls && toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
@@ -342,6 +352,7 @@ export function formatResponsesOutput(
                 call_id: toolCall.id,
                 name: toolCall.function?.name || toolCall.name,
                 arguments: toolCall.function?.arguments || toolCall.arguments,
+                signature: toolSignature, // Attach signature for persistence
                 status: 'completed'
             });
         }
@@ -445,6 +456,14 @@ export function createResponseStreamEvents(
 } {
     const createdAt = Math.floor(Date.now() / 1000);
 
+    // Pre-calculate signature
+    let toolSignature: string | undefined;
+    if (requestParams.sessionId) {
+        const actualModelName = modelMapping(model);
+        const sigContext = getSignatureContext(requestParams.sessionId, actualModelName);
+        toolSignature = sigContext.toolSignature;
+    }
+
     return {
         createStartEvent: () => ({
             type: 'response.created',
@@ -527,6 +546,7 @@ export function createResponseStreamEvents(
                 call_id: toolCall.id,
                 name: toolCall.function?.name || toolCall.name,
                 arguments: '',
+                signature: toolSignature, // Attach signature
                 status: 'in_progress',
             }
         }),
@@ -582,6 +602,7 @@ export function createResponseStreamEvents(
                 call_id: toolCall.id,
                 name: toolCall.function?.name || toolCall.name,
                 arguments: toolCall.function?.arguments || toolCall.arguments,
+                signature: toolSignature, // Attach signature
                 status: 'completed'
             }
         }),
