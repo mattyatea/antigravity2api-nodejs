@@ -135,8 +135,8 @@ export const handleCreateResponse = async (c: Context) => {
 
             try {
                 const streamEvents = createResponseStreamEvents(responseId, modelName, requestParams);
-                const itemId = streamEvents.generateItemId();
-                const outputIndex = 0;
+                const firstItemId = streamEvents.generateItemId();
+                let currentOutputIndex = 0;
                 const contentIndex = 0;
 
                 // Send response.created event
@@ -146,11 +146,11 @@ export const handleCreateResponse = async (c: Context) => {
                 // Send response.in_progress event
                 await writeResponseEvent(stream, streamEvents.createInProgressEvent());
 
-                // Send output_item.added event
-                await writeResponseEvent(stream, streamEvents.createOutputItemAdded(itemId, outputIndex));
+                // Send output_item.added event (for the initial text message)
+                await writeResponseEvent(stream, streamEvents.createOutputItemAdded(firstItemId, currentOutputIndex));
 
                 // Send content_part.added event
-                await writeResponseEvent(stream, streamEvents.createContentPartAdded(itemId, outputIndex, contentIndex));
+                await writeResponseEvent(stream, streamEvents.createContentPartAdded(firstItemId, currentOutputIndex, contentIndex));
                 logger.debug('[Responses] Sent initial events (created, in_progress, output_item.added, content_part.added)');
 
                 if (isImageModel) {
@@ -161,14 +161,14 @@ export const handleCreateResponse = async (c: Context) => {
                     );
 
                     // Send content deltas
-                    await writeResponseEvent(stream, streamEvents.createContentDelta(content, itemId, outputIndex, contentIndex));
+                    await writeResponseEvent(stream, streamEvents.createContentDelta(content, firstItemId, currentOutputIndex, contentIndex));
 
                     // Send content_part.done
-                    await writeResponseEvent(stream, streamEvents.createContentPartDone(itemId, outputIndex, contentIndex, content));
+                    await writeResponseEvent(stream, streamEvents.createContentPartDone(firstItemId, currentOutputIndex, contentIndex, content));
 
                     // Send output_item.done
                     const messageContent = [{ type: 'output_text', text: content, annotations: [] }];
-                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
+                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(firstItemId, currentOutputIndex, messageContent));
 
                     // Send completed event
                     await writeResponseEvent(stream, streamEvents.createCompletedEvent(content, null, [], usage));
@@ -186,22 +186,20 @@ export const handleCreateResponse = async (c: Context) => {
                                 logger.debug('[Responses] Received usage data');
                             } else if (data.type === 'reasoning') {
                                 accumulatedReasoning += data.reasoning_content || '';
-                                await writeResponseEvent(stream, streamEvents.createReasoningDelta(data.reasoning_content || '', itemId, outputIndex));
+                                await writeResponseEvent(stream, streamEvents.createReasoningDelta(data.reasoning_content || '', firstItemId, currentOutputIndex));
                                 logger.debug('[Responses] Sent reasoning delta');
                             } else if (data.type === 'tool_calls') {
                                 for (const toolCall of data.tool_calls) {
                                     accumulatedToolCalls.push(toolCall);
-                                    // Send delta first, then done for each tool call
-                                    await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall, itemId, outputIndex));
-                                    await writeResponseEvent(stream, streamEvents.createToolCallDone(toolCall, itemId, outputIndex));
+                                    // Don't emit tool call events here, we'll emit them as separate output items later
                                 }
-                                logger.debug('[Responses] Sent tool_calls delta and done, count:', data.tool_calls.length);
+                                logger.debug('[Responses] Accumulated tool_calls, count:', data.tool_calls.length);
                             } else if (data.type === 'text' || data.content) {
                                 // Handle both 'text' type from stream-parser and direct content
                                 const textContent = data.content || '';
                                 if (textContent) {
                                     accumulatedContent += textContent;
-                                    await writeResponseEvent(stream, streamEvents.createContentDelta(textContent, itemId, outputIndex, contentIndex));
+                                    await writeResponseEvent(stream, streamEvents.createContentDelta(textContent, firstItemId, currentOutputIndex, contentIndex));
                                     logger.debug('[Responses] Sent content delta, length:', textContent.length);
                                 }
                             }
@@ -212,11 +210,11 @@ export const handleCreateResponse = async (c: Context) => {
 
                     logger.debug('[Responses] Stream processing complete, sending final events');
 
-                    // Send content_part.done
-                    await writeResponseEvent(stream, streamEvents.createContentPartDone(itemId, outputIndex, contentIndex, accumulatedContent));
+                    // Send content_part.done for the main text message
+                    await writeResponseEvent(stream, streamEvents.createContentPartDone(firstItemId, currentOutputIndex, contentIndex, accumulatedContent));
                     logger.debug('[Responses] Sent content_part.done');
 
-                    // Build message content for output_item.done
+                    // Build message content for output_item.done (text/reasoning only)
                     const messageContent: any[] = [];
                     if (accumulatedReasoning) {
                         messageContent.push({ type: 'reasoning', text: accumulatedReasoning });
@@ -224,20 +222,31 @@ export const handleCreateResponse = async (c: Context) => {
                     if (accumulatedContent) {
                         messageContent.push({ type: 'output_text', text: accumulatedContent, annotations: [] });
                     }
-                    for (const toolCall of accumulatedToolCalls) {
-                        messageContent.push({
-                            type: 'function_call',
-                            id: toolCall.id,
-                            call_id: toolCall.id,
-                            name: toolCall.function?.name || toolCall.name,
-                            arguments: toolCall.function?.arguments || toolCall.arguments,
-                            status: 'completed'
-                        });
-                    }
+                    // Do NOT include function calls in the message content
 
-                    // Send output_item.done
-                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
-                    logger.debug('[Responses] Sent output_item.done');
+                    // Send output_item.done for the main text message
+                    await writeResponseEvent(stream, streamEvents.createOutputItemDone(firstItemId, currentOutputIndex, messageContent));
+                    logger.debug('[Responses] Sent output_item.done for text message');
+
+                    // Now process tool calls as SEPARATE output items
+                    for (const toolCall of accumulatedToolCalls) {
+                        currentOutputIndex++;
+                        const toolCallItemId = streamEvents.generateItemId();
+
+                        // 1. output_item.added
+                        await writeResponseEvent(stream, streamEvents.createToolCallAdded(toolCall, toolCallItemId, currentOutputIndex));
+
+                        // 2. function_call_arguments.delta
+                        await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall, toolCallItemId, currentOutputIndex));
+
+                        // 3. function_call_arguments.done
+                        await writeResponseEvent(stream, streamEvents.createToolCallDone(toolCall, toolCallItemId, currentOutputIndex));
+
+                        // 4. output_item.done
+                        await writeResponseEvent(stream, streamEvents.createToolCallOutputItemDone(toolCall, toolCallItemId, currentOutputIndex));
+
+                        logger.debug(`[Responses] Sent tool call output item ${currentOutputIndex} for ${toolCall.function?.name}`);
+                    }
 
                     // Send completed event
                     const completedEvent = streamEvents.createCompletedEvent(

@@ -271,7 +271,7 @@ export function formatResponsesOutput(
     const created = Math.floor(Date.now() / 1000);
     const output: any[] = [];
 
-    // Build message output
+    // Build message output (text and reasoning only)
     const messageContent: any[] = [];
 
     // Add reasoning if present
@@ -291,10 +291,22 @@ export function formatResponsesOutput(
         });
     }
 
-    // Add function calls
+    // Only add message output if there's content
+    if (messageContent.length > 0) {
+        const messageOutput = {
+            type: 'message',
+            id: generateMessageId(),
+            status: 'completed',
+            role: 'assistant',
+            content: messageContent
+        };
+        output.push(messageOutput);
+    }
+
+    // Add function calls as separate output items (not inside message content)
     if (toolCalls && toolCalls.length > 0) {
         for (const toolCall of toolCalls) {
-            messageContent.push({
+            output.push({
                 type: 'function_call',
                 id: toolCall.id,
                 call_id: toolCall.id,
@@ -304,16 +316,6 @@ export function formatResponsesOutput(
             });
         }
     }
-
-    const messageOutput = {
-        type: 'message',
-        id: generateMessageId(),
-        status: 'completed',
-        role: 'assistant',
-        content: messageContent
-    };
-
-    output.push(messageOutput);
 
     // Calculate status
     const status = toolCalls && toolCalls.length > 0 ? 'requires_action' : 'completed';
@@ -400,10 +402,13 @@ export function createResponseStreamEvents(
     createContentPartAdded: (itemId: string, outputIndex: number, contentIndex: number) => any;
     createContentDelta: (content: string, itemId: string, outputIndex: number, contentIndex: number) => any;
     createReasoningDelta: (content: string, itemId: string, outputIndex: number) => any;
+    createToolCallAdded: (toolCall: any, itemId: string, outputIndex: number) => any;
     createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => any;
     createToolCallDone: (toolCall: any, itemId: string, outputIndex: number) => any;
     createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => any;
+
     createOutputItemDone: (itemId: string, outputIndex: number, content: any[]) => any;
+    createToolCallOutputItemDone: (toolCall: any, itemId: string, outputIndex: number) => any;
     createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => any;
     createDoneEvent: () => string;
     generateItemId: () => string;
@@ -483,6 +488,19 @@ export function createResponseStreamEvents(
             delta: content
         }),
 
+        createToolCallAdded: (toolCall: any, itemId: string, outputIndex: number) => ({
+            type: 'response.output_item.added',
+            output_index: outputIndex,
+            item: {
+                type: 'function_call',
+                id: itemId,
+                call_id: toolCall.id,
+                name: toolCall.function?.name || toolCall.name,
+                arguments: '',
+                status: 'in_progress',
+            }
+        }),
+
         createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => ({
             type: 'response.function_call_arguments.delta',
             item_id: itemId,
@@ -522,6 +540,19 @@ export function createResponseStreamEvents(
                 status: 'completed',
                 role: 'assistant',
                 content
+            }
+        }),
+
+        createToolCallOutputItemDone: (toolCall: any, itemId: string, outputIndex: number) => ({
+            type: 'response.output_item.done',
+            output_index: outputIndex,
+            item: {
+                type: 'function_call',
+                id: itemId,
+                call_id: toolCall.id,
+                name: toolCall.function?.name || toolCall.name,
+                arguments: toolCall.function?.arguments || toolCall.arguments,
+                status: 'completed'
             }
         }),
 
