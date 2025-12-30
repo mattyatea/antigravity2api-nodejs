@@ -103,7 +103,7 @@ function processFunctionCallIds(contents: any[]) {
 /**
  * Process thoughts and signatures in model messages
  */
-function processModelThoughts(content: any, reasoningSignature: string, toolSignature: string) {
+function processModelThoughts(content: any, reasoningSignature: string, toolSignature: string, enableThinking: boolean) {
     const parts = content.parts;
 
     // Search for position of thought and independent thoughtSignature
@@ -128,7 +128,8 @@ function processModelThoughts(content: any, reasoningSignature: string, toolSign
         parts.splice(signatureIndex, 1);
     } else if (thoughtIndex !== -1 && signatureIndex === -1) {
         parts[thoughtIndex].thoughtSignature = reasoningSignature;
-    } else if (thoughtIndex === -1) {
+    } else if (thoughtIndex === -1 && enableThinking) {
+        // Only inject empty thought if thinking is enabled
         parts.unshift(createThoughtPart(' ', reasoningSignature));
     }
 
@@ -182,15 +183,14 @@ export function generateGeminiRequestBody(geminiBody: any, modelName: string, to
         });
         processFunctionCallIds(request.contents);
 
-        if (enableThinking) {
-            const { reasoningSignature, toolSignature } = getSignatureContext(token.sessionId, actualModelName);
+        // Always process thoughts to ensure function calls have signatures
+        const { reasoningSignature, toolSignature } = getSignatureContext(token.sessionId, actualModelName);
 
-            request.contents.forEach((content: any) => {
-                if (content.role === 'model' && content.parts && Array.isArray(content.parts)) {
-                    processModelThoughts(content, reasoningSignature, toolSignature);
-                }
-            });
-        }
+        request.contents.forEach((content: any) => {
+            if (content.role === 'model' && content.parts && Array.isArray(content.parts)) {
+                processModelThoughts(content, reasoningSignature, toolSignature, enableThinking);
+            }
+        });
     }
 
     const hadThinkingConfig = Boolean(request.generationConfig?.thinkingConfig);
