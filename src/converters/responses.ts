@@ -103,8 +103,9 @@ function handleAssistantMessage(message: ResponsesInputItem, antigravityMessages
                 parts.push(textPart);
             } else if (item.type === 'function_call') {
                 const safeName = processToolName(item.name, sessionId, actualModelName);
-                const signature = enableThinking ? (item.call_id ? toolSignature : null) : null;
-                toolCalls.push(createFunctionCallPart(item.call_id || item.id, safeName, item.arguments, signature));
+                const callId = item.call_id || item.id;
+                const signature = enableThinking ? (callId ? toolSignature : null) : null;
+                toolCalls.push(createFunctionCallPart(callId, safeName, item.arguments, signature));
             } else if (item.type === 'reasoning' || item.type === 'thinking') {
                 if (enableThinking) {
                     const reasoningText = item.text || item.content || ' ';
@@ -145,9 +146,10 @@ function handleFunctionCallOutput(message: ResponsesInputItem, antigravityMessag
 function handleFunctionCallItem(item: ResponsesInputItem, antigravityMessages: any[], enableThinking: boolean, actualModelName: string, sessionId: string) {
     const { toolSignature } = getSignatureContext(sessionId, actualModelName);
     const safeName = processToolName((item as any).name, sessionId, actualModelName);
-    const signature = enableThinking ? ((item as any).call_id ? toolSignature : null) : null;
+    const callId = (item as any).call_id || item.id;
+    const signature = enableThinking ? (callId ? toolSignature : null) : null;
 
-    const functionCallPart = createFunctionCallPart((item as any).call_id || item.id, safeName, (item as any).arguments, signature);
+    const functionCallPart = createFunctionCallPart(callId, safeName, (item as any).arguments, signature);
 
     // Try to append to last message if it is a model message
     const lastMessage = antigravityMessages.length > 0 ? antigravityMessages[antigravityMessages.length - 1] : null;
