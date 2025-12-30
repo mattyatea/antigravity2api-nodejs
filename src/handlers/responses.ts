@@ -191,9 +191,11 @@ export const handleCreateResponse = async (c: Context) => {
                             } else if (data.type === 'tool_calls') {
                                 for (const toolCall of data.tool_calls) {
                                     accumulatedToolCalls.push(toolCall);
+                                    // Send delta first, then done for each tool call
                                     await writeResponseEvent(stream, streamEvents.createToolCallDelta(toolCall, itemId, outputIndex));
+                                    await writeResponseEvent(stream, streamEvents.createToolCallDone(toolCall, itemId, outputIndex));
                                 }
-                                logger.debug('[Responses] Sent tool_calls delta, count:', data.tool_calls.length);
+                                logger.debug('[Responses] Sent tool_calls delta and done, count:', data.tool_calls.length);
                             } else if (data.type === 'text' || data.content) {
                                 // Handle both 'text' type from stream-parser and direct content
                                 const textContent = data.content || '';
@@ -237,19 +239,15 @@ export const handleCreateResponse = async (c: Context) => {
                     await writeResponseEvent(stream, streamEvents.createOutputItemDone(itemId, outputIndex, messageContent));
                     logger.debug('[Responses] Sent output_item.done');
 
-                    // Send done/completed event
-                    // Use 'response.done' when there are tool calls (requires_action)
-                    // Use 'response.completed' when the response is fully completed
-                    const hasToolCalls = accumulatedToolCalls.length > 0;
+                    // Send completed event
                     const completedEvent = streamEvents.createCompletedEvent(
                         accumulatedContent,
                         accumulatedReasoning || null,
                         accumulatedToolCalls,
-                        usageData,
-                        hasToolCalls  // Pass flag to determine event type
+                        usageData
                     );
                     await writeResponseEvent(stream, completedEvent);
-                    logger.debug(`[Responses] Sent ${hasToolCalls ? 'response.done' : 'response.completed'} event`);
+                    logger.debug('[Responses] Sent response.completed event');
 
                     // Store response if requested
                     if (store) {

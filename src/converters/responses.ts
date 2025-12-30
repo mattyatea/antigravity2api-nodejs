@@ -401,9 +401,10 @@ export function createResponseStreamEvents(
     createContentDelta: (content: string, itemId: string, outputIndex: number, contentIndex: number) => any;
     createReasoningDelta: (content: string, itemId: string, outputIndex: number) => any;
     createToolCallDelta: (toolCall: any, itemId: string, outputIndex: number) => any;
+    createToolCallDone: (toolCall: any, itemId: string, outputIndex: number) => any;
     createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => any;
     createOutputItemDone: (itemId: string, outputIndex: number, content: any[]) => any;
-    createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any, isRequiresAction?: boolean) => any;
+    createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => any;
     createDoneEvent: () => string;
     generateItemId: () => string;
 } {
@@ -491,6 +492,15 @@ export function createResponseStreamEvents(
             delta: toolCall.function?.arguments || toolCall.arguments
         }),
 
+        createToolCallDone: (toolCall: any, itemId: string, outputIndex: number) => ({
+            type: 'response.function_call_arguments.done',
+            item_id: itemId,
+            output_index: outputIndex,
+            call_id: toolCall.id,
+            name: toolCall.function?.name || toolCall.name,
+            arguments: toolCall.function?.arguments || toolCall.arguments
+        }),
+
         createContentPartDone: (itemId: string, outputIndex: number, contentIndex: number, text: string) => ({
             type: 'response.content_part.done',
             item_id: itemId,
@@ -515,9 +525,8 @@ export function createResponseStreamEvents(
             }
         }),
 
-        createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any, isRequiresAction = false) => ({
-            // Use 'response.done' when requires_action, 'response.completed' when fully completed
-            type: isRequiresAction ? 'response.done' : 'response.completed',
+        createCompletedEvent: (content: string, reasoningContent: string | null, toolCalls: any[], usage: any) => ({
+            type: 'response.completed',
             response: formatResponsesOutput(responseId, model, content, reasoningContent, toolCalls, usage, requestParams)
         }),
 
