@@ -92,7 +92,7 @@ function handleClaudeAssistantMessage(message: any, antigravityMessages: any[], 
                 textContent += item.text || '';
             } else if (item.type === 'tool_use') {
                 const safeName = processToolName(item.name, sessionId, actualModelName);
-                const signature = enableThinking ? toolSignature : null;
+                const signature = toolSignature;
                 toolCalls.push(createFunctionCallPart(item.id, safeName, JSON.stringify(item.input || {}), signature));
             }
         }

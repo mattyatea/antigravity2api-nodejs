@@ -82,7 +82,7 @@ function handleAssistantMessage(message: any, antigravityMessages: any[], enable
     const toolCalls = hasToolCalls
         ? message.tool_calls.map((toolCall: any) => {
             const safeName = processToolName(toolCall.function.name, sessionId, actualModelName);
-            const signature = enableThinking ? (toolCall.thoughtSignature || toolSignature) : null;
+            const signature = toolCall.thoughtSignature || toolSignature;
             return createFunctionCallPart(toolCall.id, safeName, toolCall.function.arguments, signature);
         })
         : [];

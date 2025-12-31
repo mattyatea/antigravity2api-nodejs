@@ -104,8 +104,8 @@ function handleAssistantMessage(message: ResponsesInputItem, antigravityMessages
             } else if (item.type === 'function_call') {
                 const safeName = processToolName(item.name, sessionId, actualModelName);
                 const callId = item.call_id || item.id;
-                // Use provided signature first, then fallback to current toolSignature if Thinking is enabled
-                const signature = item.signature || (enableThinking ? (callId ? toolSignature : null) : null);
+                // Use provided signature first, then fallback to current toolSignature
+                const signature = item.signature || toolSignature;
                 toolCalls.push(createFunctionCallPart(callId, safeName, item.arguments, signature));
             } else if (item.type === 'reasoning' || item.type === 'thinking') {
                 if (enableThinking) {
@@ -148,8 +148,8 @@ function handleFunctionCallItem(item: ResponsesInputItem, antigravityMessages: a
     const { toolSignature } = getSignatureContext(sessionId, actualModelName);
     const safeName = processToolName((item as any).name, sessionId, actualModelName);
     const callId = (item as any).call_id || item.id;
-    // Use provided signature first, then fallback to current toolSignature if Thinking is enabled
-    const signature = (item as any).signature || (enableThinking ? (callId ? toolSignature : null) : null);
+    // Use provided signature first, then fallback to current toolSignature
+    const signature = (item as any).signature || toolSignature;
 
     const functionCallPart = createFunctionCallPart(callId, safeName, (item as any).arguments, signature);
 
